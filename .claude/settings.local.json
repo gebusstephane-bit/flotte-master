@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(del:*)",
+      "Bash(ren:*)",
+      "Bash(npx next build)",
+      "Bash(npx shadcn@latest add separator -y)"
+    ]
+  }
+}
