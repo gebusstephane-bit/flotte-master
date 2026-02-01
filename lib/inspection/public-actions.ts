@@ -133,9 +133,12 @@ export interface VehicleInfo {
  * Récupérer un véhicule par ID (public)
  */
 export async function getVehicleById(
-  id: string
+  rawId: string
 ): Promise<{ success: true; data: VehicleInfo } | { success: false; error: string }> {
   try {
+    // Décoder l'ID si encodé dans l'URL
+    const id = decodeURIComponent(rawId).trim();
+    
     // Validation de base (non vide)
     if (!id || id.length < 1) {
       console.error("[getVehicleById] ID vide");

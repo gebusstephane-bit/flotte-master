@@ -15,8 +15,9 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
     return <>{children}</>;
   }
 
-  // Routes publiques sans sidebar (inspections)
-  const isPublicRoute = pathname.startsWith("/inspection") || pathname.startsWith("/login");
+  // Routes publiques sans sidebar (inspections anonymes seulement)
+  // /inspection = formulaire public, /inspections = historique (protégé)
+  const isPublicRoute = pathname.startsWith("/inspection/") || pathname === "/inspection" || pathname.startsWith("/login");
   
   if (isPublicRoute) {
     return <>{children}</>;

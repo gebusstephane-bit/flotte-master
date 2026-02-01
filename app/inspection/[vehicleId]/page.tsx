@@ -146,6 +146,7 @@ export default function PublicInspectionForm({
   useEffect(() => {
     async function loadVehicle() {
       console.log("[PublicInspectionForm] Loading vehicle ID:", vehicleId);
+      console.log("[PublicInspectionForm] UserAgent:", navigator.userAgent);
       try {
         const result = await getVehicleById(vehicleId);
         console.log("[PublicInspectionForm] Result:", result);
@@ -158,8 +159,9 @@ export default function PublicInspectionForm({
           return;
         }
         dispatch({ type: "SET_VEHICLE", payload: result.data });
-      } catch (err) {
-        setError("Erreur lors du chargement du véhicule");
+      } catch (err: any) {
+        console.error("[PublicInspectionForm] Error:", err);
+        setError(`Erreur lors du chargement: ${err.message || "Unknown error"}`);
       } finally {
         setIsLoading(false);
       }
@@ -236,9 +238,15 @@ export default function PublicInspectionForm({
             <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
             <h2 className="text-lg font-semibold text-slate-900 mb-2">Erreur</h2>
             <p className="text-slate-600 mb-4">{error}</p>
-            <Button onClick={() => router.push("/inspection")}>
-              Retour à l&apos;accueil
-            </Button>
+            <p className="text-xs text-slate-400 mb-4 break-all">ID: {vehicleId}</p>
+            <div className="flex gap-2 justify-center">
+              <Button variant="outline" onClick={() => window.location.reload()}>
+                Réessayer
+              </Button>
+              <Button onClick={() => router.push("/inspection")}>
+                Retour
+              </Button>
+            </div>
           </CardContent>
         </Card>
       </div>
