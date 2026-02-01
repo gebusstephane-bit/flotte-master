@@ -23,8 +23,15 @@ export async function GET(request: NextRequest) {
   }
 
   // Utiliser l'anon key (publique) - pas besoin de service_role
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
+
+  console.log("[API /public/vehicle] Env check:", { 
+    hasUrl: !!supabaseUrl, 
+    hasKey: !!supabaseAnonKey,
+    urlLength: supabaseUrl?.length,
+    keyLength: supabaseAnonKey?.length
+  });
 
   if (!supabaseUrl || !supabaseAnonKey) {
     console.error("[API /public/vehicle] Missing env vars");
