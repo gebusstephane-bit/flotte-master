@@ -73,19 +73,43 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
             },
             async (decodedText: string) => {
               // QR Code détecté!
-              console.log("[QRScanner] QR Code détecté:", decodedText);
+              console.log("[QRScanner] QR Code brut:", decodedText);
               
               // Arrêter le scanner
               await stopScanner();
               
+              // Extraire l'ID du véhicule depuis l'URL du QR code
+              // Format: /inspection?vehicle=xxx ou https://.../inspection?vehicle=xxx
+              let vehicleId = decodedText;
+              
+              try {
+                // Si c'est une URL complète, extraire le paramètre 'vehicle'
+                if (decodedText.includes('?')) {
+                  const url = new URL(decodedText, window.location.origin);
+                  const vehicleParam = url.searchParams.get('vehicle');
+                  if (vehicleParam) {
+                    vehicleId = vehicleParam;
+                    console.log("[QRScanner] ID extrait de l'URL:", vehicleId);
+                  }
+                }
+              } catch (e) {
+                // Si ce n'est pas une URL valide, utiliser le texte brut (peut-être juste l'ID)
+                console.log("[QRScanner] Pas une URL, utilisation brute:", vehicleId);
+              }
+              
+              if (!vehicleId) {
+                onError?.("QR Code invalide");
+                return;
+              }
+              
               // Essayer de charger le véhicule par ID
               let result;
               try {
-                result = await getVehicleByIdAPI(decodedText);
+                result = await getVehicleByIdAPI(vehicleId);
                 if (!result.success) throw new Error(result.error);
               } catch (err) {
                 try {
-                  result = await getVehicleByIdDirect(decodedText);
+                  result = await getVehicleByIdDirect(vehicleId);
                 } catch (directErr: any) {
                   onError?.("Erreur: " + directErr.message);
                   return;

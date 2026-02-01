@@ -27,9 +27,21 @@ export default function PublicInspectionLanding() {
 
   // Gestion du scan QR réussi
   const handleQRScan = (result: QRScanResult) => {
-    toast.success("Véhicule trouvé !");
+    console.log("[QR Scan] Résultat reçu:", result);
+    console.log("[QR Scan] Vehicle ID:", result.vehicle_id);
+    console.log("[QR Scan] Immat:", result.immat);
+    
+    if (!result.vehicle_id) {
+      toast.error("QR Code invalide - ID manquant");
+      return;
+    }
+    
+    toast.success(`Véhicule ${result.immat || result.vehicle_id} trouvé !`);
+    
     // Redirection vers le formulaire d'inspection
-    router.push(`/inspection/${result.vehicle_id}`);
+    const targetUrl = `/inspection/${encodeURIComponent(result.vehicle_id)}`;
+    console.log("[QR Scan] Redirection vers:", targetUrl);
+    router.push(targetUrl);
   };
 
   // Recherche par plaque
