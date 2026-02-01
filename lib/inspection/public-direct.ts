@@ -6,23 +6,32 @@
 import { createClient } from "@supabase/supabase-js";
 import { VehicleInfo } from "./public-actions";
 
-// Créer un client Supabase côté client avec l'anon key
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
 let supabaseClient: ReturnType<typeof createClient> | null = null;
 
 function getSupabaseClient() {
   if (!supabaseClient) {
+    // Récupérer les variables d'environnement (NEXT_PUBLIC_ sont disponibles côté client)
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    
+    console.log("[DIRECT] Env check:", { 
+      hasUrl: !!supabaseUrl, 
+      hasKey: !!supabaseAnonKey,
+      url: supabaseUrl?.substring(0, 20) + "..."
+    });
+    
     if (!supabaseUrl || !supabaseAnonKey) {
-      throw new Error("Supabase URL ou Anon Key manquante");
+      throw new Error(`Configuration manquante: URL=${!!supabaseUrl}, KEY=${!!supabaseAnonKey}`);
     }
+    
     supabaseClient = createClient(supabaseUrl, supabaseAnonKey, {
       auth: {
         autoRefreshToken: false,
         persistSession: false,
       },
     });
+    
+    console.log("[DIRECT] Client Supabase créé");
   }
   return supabaseClient;
 }
