@@ -2,16 +2,17 @@
 
 /**
  * QR Scanner Component - Module Vehicle Inspection
- * Scan QR code pour identifier un véhicule
+ * Scan QR code avec html5-qrcode pour identifier un véhicule
  * Fallback: Saisie manuelle immatriculation
  */
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Camera, Keyboard, Scan, X, Search, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { searchVehicleByImmatAPI, getVehicleByIdAPI } from "@/lib/inspection/public-api";
+import { searchVehicleByImmatDirect, getVehicleByIdDirect } from "@/lib/inspection/public-direct";
 import type { QRScanResult } from "@/lib/inspection/types";
 
 interface QRScannerProps {
@@ -23,80 +24,127 @@ type ScanMode = "camera" | "manual";
 
 export function QRScanner({ onScan, onError }: QRScannerProps) {
   const [mode, setMode] = useState<ScanMode>("camera");
-  const [isScanning, setIsScanning] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Array<{ id: string; immat: string; marque: string; type: string }>>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [hasCamera, setHasCamera] = useState(true);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
+  const [isScanning, setIsScanning] = useState(false);
+  const scannerRef = useRef<any>(null);
+  const qrContainerRef = useRef<HTMLDivElement>(null);
 
-  // Démarrer le scan caméra
-  const startCamera = useCallback(async () => {
-    try {
-      setIsScanning(true);
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "environment" },
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+  // Arrêter le scanner proprement
+  const stopScanner = useCallback(async () => {
+    if (scannerRef.current) {
+      try {
+        await scannerRef.current.stop();
+      } catch (err) {
+        // Ignore stop errors
       }
-    } catch (err) {
-      console.error("Camera error:", err);
-      setHasCamera(false);
-      setMode("manual");
-      onError?.("Impossible d'accéder à la caméra. Utilisez la saisie manuelle.");
-    }
-  }, [onError]);
-
-  // Arrêter le scan caméra
-  const stopCamera = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
+      scannerRef.current = null;
     }
     setIsScanning(false);
   }, []);
 
-  // Simuler un scan QR (dans une vraie implémentation, utiliser jsQR ou html5-qrcode)
-  const simulateQRScan = useCallback(async () => {
-    // Dans une implémentation réelle, on utiliserait une bibliothèque comme:
-    // - html5-qrcode
-    // - @zxing/library
-    // - jsQR
+  // Démarrer le scan QR avec html5-qrcode
+  const startQRScanner = useCallback(async () => {
+    if (!qrContainerRef.current) return;
     
-    // Pour cette démo, on simule la détection d'un QR code
-    // Le QR code contiendrait l'UUID du véhicule
-    
-    // Exemple: arrêter la caméra et demander l'ID manuellement
-    stopCamera();
-    
-    // Ici on pourrait intégrer html5-qrcode
-    // Pour l'instant, on bascule en mode manuel
-    setMode("manual");
-  }, [stopCamera]);
+    try {
+      setIsScanning(true);
+      
+      // Import dynamique de html5-qrcode
+      const { Html5Qrcode } = await import("html5-qrcode");
+      
+      scannerRef.current = new Html5Qrcode(qrContainerRef.current.id);
+      
+      await scannerRef.current.start(
+        { facingMode: "environment" },
+        {
+          fps: 10,
+          qrbox: { width: 250, height: 250 },
+        },
+        async (decodedText: string) => {
+          // QR Code détecté!
+          console.log("[QRScanner] QR Code détecté:", decodedText);
+          
+          // Arrêter le scanner
+          await stopScanner();
+          
+          // Essayer de charger le véhicule par ID
+          let result;
+          try {
+            result = await getVehicleByIdAPI(decodedText);
+            if (!result.success) throw new Error(result.error);
+          } catch (err) {
+            try {
+              result = await getVehicleByIdDirect(decodedText);
+            } catch (directErr: any) {
+              onError?.("Erreur: " + directErr.message);
+              return;
+            }
+          }
+          
+          if (result.success) {
+            onScan({
+              vehicle_id: result.data.id,
+              immat: result.data.immat,
+              marque: result.data.marque,
+              type: result.data.type,
+            });
+          } else {
+            onError?.("Véhicule non trouvé");
+          }
+        },
+        () => {
+          // QR code not found yet - ignorer silencieusement
+        }
+      );
+    } catch (err: any) {
+      console.error("[QRScanner] Erreur démarrage:", err);
+      setHasCamera(false);
+      setMode("manual");
+      onError?.("Caméra indisponible. Utilisez la saisie manuelle.");
+    }
+  }, [onScan, onError, stopScanner]);
 
-  // Recherche par immatriculation
+  // Cleanup au démontage
+  useEffect(() => {
+    return () => {
+      stopScanner();
+    };
+  }, [stopScanner]);
+
+  // Recherche par immatriculation avec fallback
   const handleSearch = useCallback(async () => {
     if (!searchQuery.trim()) return;
     
     setIsSearching(true);
+    let result;
+    
+    // Essai 1: API
     try {
-      const result = await searchVehicleByImmatAPI(searchQuery);
-      if (result.success) {
-        setSearchResults(result.data);
-        if (result.data.length === 0) {
-          onError?.("Aucun véhicule trouvé");
-        }
-      } else {
-        onError?.(result.error);
-      }
+      result = await searchVehicleByImmatAPI(searchQuery);
+      if (!result.success) throw new Error(result.error);
     } catch (err) {
-      onError?.("Erreur de recherche");
-    } finally {
-      setIsSearching(false);
+      // Essai 2: Direct
+      try {
+        result = await searchVehicleByImmatDirect(searchQuery);
+      } catch (directErr: any) {
+        onError?.("Erreur de connexion: " + directErr.message);
+        setIsSearching(false);
+        return;
+      }
     }
+    
+    if (result.success) {
+      setSearchResults(result.data);
+      if (result.data.length === 0) {
+        onError?.("Aucun véhicule trouvé");
+      }
+    } else {
+      onError?.(result.error);
+    }
+    setIsSearching(false);
   }, [searchQuery, onError]);
 
   // Sélectionner un véhicule
@@ -109,16 +157,6 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
     });
   }, [onScan]);
 
-  // Charger un véhicule par ID (pour QR)
-  const loadVehicleById = useCallback(async (id: string) => {
-    const result = await getVehicleByIdAPI(id);
-    if (result.success) {
-      selectVehicle(result.data);
-    } else {
-      onError?.(result.error);
-    }
-  }, [onError, selectVehicle]);
-
   return (
     <div className="space-y-4">
       {/* Sélection du mode */}
@@ -128,19 +166,19 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
           className="flex-1"
           onClick={() => {
             setMode("camera");
-            startCamera();
+            startQRScanner();
           }}
-          disabled={!hasCamera}
+          disabled={!hasCamera || isScanning}
         >
           <Camera className="w-4 h-4 mr-2" />
-          Caméra
+          {isScanning ? "Scan en cours..." : "Caméra"}
         </Button>
         <Button
           variant={mode === "manual" ? "default" : "outline"}
           className="flex-1"
           onClick={() => {
             setMode("manual");
-            stopCamera();
+            stopScanner();
           }}
         >
           <Keyboard className="w-4 h-4 mr-2" />
@@ -155,15 +193,14 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
             <CardContent className="p-0">
               {isScanning ? (
                 <div className="relative aspect-square bg-black">
-                  <video
-                    ref={videoRef}
-                    autoPlay
-                    playsInline
-                    muted
-                    className="w-full h-full object-cover"
+                  {/* Container pour html5-qrcode */}
+                  <div 
+                    id="qr-reader-container" 
+                    ref={qrContainerRef}
+                    className="w-full h-full"
                   />
                   {/* Overlay de scan */}
-                  <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                     <div className="w-48 h-48 border-2 border-white/50 rounded-lg relative">
                       <div className="absolute top-0 left-0 w-4 h-4 border-t-4 border-l-4 border-blue-500 -mt-1 -ml-1" />
                       <div className="absolute top-0 right-0 w-4 h-4 border-t-4 border-r-4 border-blue-500 -mt-1 -mr-1" />
@@ -176,7 +213,7 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
                     variant="destructive"
                     size="icon"
                     className="absolute top-2 right-2"
-                    onClick={stopCamera}
+                    onClick={stopScanner}
                   >
                     <X className="w-4 h-4" />
                   </Button>
@@ -187,7 +224,11 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
                   <p className="text-slate-600 text-center">
                     Positionnez le QR code du véhicule dans le cadre
                   </p>
-                  <Button className="mt-4" onClick={startCamera}>
+                  <Button 
+                    className="mt-4" 
+                    onClick={startQRScanner}
+                    disabled={!hasCamera}
+                  >
                     <Camera className="w-4 h-4 mr-2" />
                     Démarrer le scan
                   </Button>
@@ -195,11 +236,6 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
               )}
             </CardContent>
           </Card>
-          
-          {/* Note sur l'intégration QR */}
-          <p className="text-xs text-slate-500 mt-2 text-center">
-            💡 Pour une intégration QR complète, installer: npm install html5-qrcode
-          </p>
         </div>
       )}
 
@@ -263,48 +299,4 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
       )}
     </div>
   );
-}
-
-// Hook pour la détection QR (à utiliser avec html5-qrcode)
-export function useQRScanner(onScan: (result: string) => void) {
-  const [isScanning, setIsScanning] = useState(false);
-  const scannerRef = useRef<any>(null);
-
-  const startScanning = useCallback(async (elementId: string) => {
-    try {
-      // Dynamically import html5-qrcode
-      const { Html5Qrcode } = await import("html5-qrcode");
-      
-      scannerRef.current = new Html5Qrcode(elementId);
-      
-      await scannerRef.current.start(
-        { facingMode: "environment" },
-        {
-          fps: 10,
-          qrbox: { width: 250, height: 250 },
-        },
-        (decodedText: string) => {
-          onScan(decodedText);
-          stopScanning();
-        },
-        () => {
-          // Error callback - QR code not found yet
-        }
-      );
-      
-      setIsScanning(true);
-    } catch (err) {
-      console.error("QR Scanner error:", err);
-    }
-  }, [onScan]);
-
-  const stopScanning = useCallback(async () => {
-    if (scannerRef.current) {
-      await scannerRef.current.stop();
-      scannerRef.current = null;
-    }
-    setIsScanning(false);
-  }, []);
-
-  return { isScanning, startScanning, stopScanning };
 }
