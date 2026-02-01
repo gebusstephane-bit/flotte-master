@@ -15,6 +15,7 @@ export async function getVehicleByIdAPI(
 ): Promise<{ success: true; data: VehicleInfo } | { success: false; error: string }> {
   try {
     console.log("[getVehicleByIdAPI] Fetching vehicle:", id);
+    console.log("[getVehicleByIdAPI] API URL:", `${API_BASE}/vehicle?id=${encodeURIComponent(id)}`);
     
     const response = await fetch(`${API_BASE}/vehicle?id=${encodeURIComponent(id)}`, {
       method: "GET",
@@ -25,7 +26,21 @@ export async function getVehicleByIdAPI(
       cache: "no-store",
     });
 
-    const result = await response.json();
+    console.log("[getVehicleByIdAPI] HTTP Status:", response.status);
+    
+    let result;
+    try {
+      result = await response.json();
+    } catch (parseErr) {
+      console.error("[getVehicleByIdAPI] JSON Parse Error:", parseErr);
+      const text = await response.text();
+      console.error("[getVehicleByIdAPI] Raw Response:", text.substring(0, 500));
+      return { 
+        success: false, 
+        error: `Erreur serveur (${response.status}): Réponse invalide` 
+      };
+    }
+    
     console.log("[getVehicleByIdAPI] Response:", result);
 
     if (!response.ok || !result.success) {
@@ -37,10 +52,10 @@ export async function getVehicleByIdAPI(
 
     return { success: true, data: result.data };
   } catch (err: any) {
-    console.error("[getVehicleByIdAPI] Error:", err);
+    console.error("[getVehicleByIdAPI] Network Error:", err);
     return { 
       success: false, 
-      error: "Erreur réseau: " + (err.message || "Unknown error") 
+      error: "Erreur réseau: " + (err.message || "Impossible de contacter le serveur") 
     };
   }
 }
