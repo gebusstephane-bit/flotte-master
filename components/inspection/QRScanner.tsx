@@ -47,63 +47,80 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
 
   // Démarrer le scan QR avec html5-qrcode
   const startQRScanner = useCallback(async () => {
-    if (!qrContainerRef.current) return;
-    
     try {
       setIsScanning(true);
       
-      // Import dynamique de html5-qrcode
-      const { Html5Qrcode } = await import("html5-qrcode");
-      
-      scannerRef.current = new Html5Qrcode(qrContainerRef.current.id);
-      
-      await scannerRef.current.start(
-        { facingMode: "environment" },
-        {
-          fps: 10,
-          qrbox: { width: 250, height: 250 },
-        },
-        async (decodedText: string) => {
-          // QR Code détecté!
-          console.log("[QRScanner] QR Code détecté:", decodedText);
-          
-          // Arrêter le scanner
-          await stopScanner();
-          
-          // Essayer de charger le véhicule par ID
-          let result;
-          try {
-            result = await getVehicleByIdAPI(decodedText);
-            if (!result.success) throw new Error(result.error);
-          } catch (err) {
-            try {
-              result = await getVehicleByIdDirect(decodedText);
-            } catch (directErr: any) {
-              onError?.("Erreur: " + directErr.message);
-              return;
-            }
-          }
-          
-          if (result.success) {
-            onScan({
-              vehicle_id: result.data.id,
-              immat: result.data.immat,
-              marque: result.data.marque,
-              type: result.data.type,
-            });
-          } else {
-            onError?.("Véhicule non trouvé");
-          }
-        },
-        () => {
-          // QR code not found yet - ignorer silencieusement
+      // Attendre que le DOM soit mis à jour et le container rendu
+      setTimeout(async () => {
+        if (!qrContainerRef.current) {
+          console.error("[QRScanner] Container non trouvé");
+          setIsScanning(false);
+          onError?.("Erreur d'initialisation");
+          return;
         }
-      );
+        
+        try {
+          // Import dynamique de html5-qrcode
+          const { Html5Qrcode } = await import("html5-qrcode");
+          
+          scannerRef.current = new Html5Qrcode(qrContainerRef.current.id);
+          
+          await scannerRef.current.start(
+            { facingMode: "environment" },
+            {
+              fps: 10,
+              qrbox: { width: 250, height: 250 },
+            },
+            async (decodedText: string) => {
+              // QR Code détecté!
+              console.log("[QRScanner] QR Code détecté:", decodedText);
+              
+              // Arrêter le scanner
+              await stopScanner();
+              
+              // Essayer de charger le véhicule par ID
+              let result;
+              try {
+                result = await getVehicleByIdAPI(decodedText);
+                if (!result.success) throw new Error(result.error);
+              } catch (err) {
+                try {
+                  result = await getVehicleByIdDirect(decodedText);
+                } catch (directErr: any) {
+                  onError?.("Erreur: " + directErr.message);
+                  return;
+                }
+              }
+              
+              if (result.success) {
+                onScan({
+                  vehicle_id: result.data.id,
+                  immat: result.data.immat,
+                  marque: result.data.marque,
+                  type: result.data.type,
+                });
+              } else {
+                onError?.("Véhicule non trouvé");
+              }
+            },
+            () => {
+              // QR code not found yet - ignorer silencieusement
+            }
+          );
+        } catch (err: any) {
+          console.error("[QRScanner] Erreur démarrage:", err);
+          setIsScanning(false);
+          setHasCamera(false);
+          setMode("manual");
+          onError?.("Caméra indisponible. Utilisez la saisie manuelle.");
+        }
+      }, 100); // Petit délai pour laisser React rendre le DOM
+      
     } catch (err: any) {
-      console.error("[QRScanner] Erreur démarrage:", err);
+      console.error("[QRScanner] Erreur:", err);
       setHasCamera(false);
       setMode("manual");
-      onError?.("Caméra indisponible. Utilisez la saisie manuelle.");
+      onError?.("Caméra indisponible");
     }
   }, [onScan, onError, stopScanner]);
 
@@ -113,6 +130,13 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
       stopScanner();
     };
   }, [stopScanner]);
+
+  // Démarrer le scanner automatiquement quand on passe en mode caméra
+  useEffect(() => {
+    if (mode === "camera" && hasCamera && !isScanning) {
+      startQRScanner();
+    }
+  }, [mode, hasCamera, isScanning, startQRScanner]);
 
   // Recherche par immatriculation avec fallback
   const handleSearch = useCallback(async () => {
@@ -166,12 +190,11 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
           className="flex-1"
           onClick={() => {
             setMode("camera");
-            startQRScanner();
           }}
-          disabled={!hasCamera || isScanning}
+          disabled={!hasCamera}
         >
           <Camera className="w-4 h-4 mr-2" />
-          {isScanning ? "Scan en cours..." : "Caméra"}
+          Caméra
         </Button>
         <Button
           variant={mode === "manual" ? "default" : "outline"}
@@ -222,16 +245,9 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
                 <div className="aspect-square flex flex-col items-center justify-center bg-slate-100 p-6">
                   <Scan className="w-16 h-16 text-slate-400 mb-4" />
                   <p className="text-slate-600 text-center">
-                    Positionnez le QR code du véhicule dans le cadre
+                    Démarrage de la caméra...
                   </p>
-                  <Button 
-                    className="mt-4" 
-                    onClick={startQRScanner}
-                    disabled={!hasCamera}
-                  >
-                    <Camera className="w-4 h-4 mr-2" />
-                    Démarrer le scan
-                  </Button>
+                  <div className="mt-4 w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
                 </div>
               )}
             </CardContent>
