@@ -248,7 +248,7 @@ export default function PublicInspectionForm({
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="bg-white shadow-sm sticky top-0 z-10">
-        <div className="max-w-lg mx-auto px-4 py-3 flex items-center justify-between">
+        <div className="max-w-lg mx-auto px-4 py-3 safe-area-top flex items-center justify-between">
           <button 
             onClick={() => state.currentStep === 0 ? router.push("/inspection") : dispatch({ type: "PREV_STEP" })}
             className="flex items-center gap-1 text-slate-600 hover:text-slate-900"
@@ -275,7 +275,7 @@ export default function PublicInspectionForm({
         </div>
       </header>
 
-      <main className="max-w-lg mx-auto px-4 py-6">
+      <main className="max-w-lg mx-auto px-4 py-6 safe-area-x safe-area-bottom pb-24">
         {state.currentStep === 0 && (
           <StepMetrics 
             mileage={state.mileage}

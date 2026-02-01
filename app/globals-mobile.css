@@ -1,0 +1,108 @@
+/* ============================================================================
+   MOBILE RESPONSIVE FIXES
+   Optimisations pour smartphones et tablettes
+   ============================================================================ */
+
+/* Force le viewport à être responsive */
+@viewport {
+  width: device-width;
+  initial-scale: 1;
+}
+
+/* Empêche le zoom sur les inputs iOS */
+input, textarea, select {
+  font-size: 16px !important;
+}
+
+/* Boutons plus grands pour les doigts */
+button, [role="button"] {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Tables scrollables horizontalement */
+.table-responsive {
+  display: block;
+  width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Fix pour iPhone notch */
+@supports (padding: max(0px)) {
+  .safe-area-top {
+    padding-top: max(1rem, env(safe-area-inset-top));
+  }
+  
+  .safe-area-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+  
+  .safe-area-x {
+    padding-left: max(1rem, env(safe-area-inset-left));
+    padding-right: max(1rem, env(safe-area-inset-right));
+  }
+}
+
+/* Animation fluide sur mobile */
+@media (prefers-reduced-motion: no-preference) {
+  * {
+    scroll-behavior: smooth;
+  }
+}
+
+/* Optimisations spécifiques petits écrans */
+@media (max-width: 640px) {
+  /* Réduit les espacements */
+  .mobile-compact {
+    padding: 0.75rem !important;
+  }
+  
+  /* Texte plus lisible */
+  .mobile-text {
+    font-size: 0.9375rem;
+    line-height: 1.5;
+  }
+  
+  /* Boutons pleine largeur */
+  .mobile-fullwidth {
+    width: 100% !important;
+  }
+  
+  /* Cards sans bordures arrondies excessives */
+  .mobile-flat {
+    border-radius: 0.5rem !important;
+  }
+  
+  /* Empêche le débordement horizontal */
+  body {
+    overflow-x: hidden;
+  }
+  
+  /* Améliore le touch */
+  a, button {
+    touch-action: manipulation;
+  }
+}
+
+/* Fix pour le clavier virtuel */
+@media (max-height: 500px) and (orientation: landscape) {
+  .keyboard-visible {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+  }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+  /* Respecte déjà le dark mode du projet */
+}
+
+/* Landscape mode sur mobile */
+@media (max-height: 500px) and (orientation: landscape) {
+  .hide-landscape {
+    display: none !important;
+  }
+}

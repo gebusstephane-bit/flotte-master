@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import "./globals-mobile.css";
 import { AuthProvider } from "@/components/AuthProvider";
 import { Toaster } from "@/components/ui/sonner";
 import { LayoutShell } from "@/components/LayoutShell";
@@ -16,6 +17,11 @@ const inter = Inter({
 
 export const viewport: Viewport = {
   themeColor: "#0f172a",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
 };
 
 export const metadata: Metadata = {
