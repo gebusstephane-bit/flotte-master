@@ -39,7 +39,7 @@ function downloadCsv(content: string, filename: string) {
 }
 
 // Format date pour CSV
-function formatDate(dateStr: string | null): string {
+function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return "";
   try {
     const d = new Date(dateStr);
@@ -112,7 +112,7 @@ export function exportInterventionsCsv(interventions: Intervention[]) {
     i.immat,
     i.description,
     i.garage,
-    i.montant,
+    String(i.montant),
     statusLabels[i.status] || i.status,
     formatDate(i.date_creation || i.created_at),
     formatDate(i.rdv_date),

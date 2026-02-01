@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/sheet";
 import { supabase, type Intervention } from "@/lib/supabase";
 import { Separator } from "@/components/ui/separator";
-import { Calendar, Clock, Truck, Wrench, MapPin, Building2, Euro, RefreshCw, Loader2, Hash, FileDown, List } from "lucide-react";
+import { Calendar, Timer, Truck, Wrench, MapPin, Building2, Euro, RefreshCw, Loader2, Hash, FileDown, List } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CalendarView, type CalendarEvent } from "@/components/CalendarView";
 import { format, parseISO, isBefore, addDays, startOfMonth } from "date-fns";
@@ -194,7 +194,7 @@ export default function PlanningPage() {
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
               <div className="p-3 bg-orange-100 rounded-lg">
-                <Clock className="w-6 h-6 text-orange-600" />
+                <Timer className="w-6 h-6 text-orange-600" />
               </div>
               <div>
                 <p className="text-2xl font-bold text-slate-900">
@@ -228,7 +228,7 @@ export default function PlanningPage() {
         <Card className="border-orange-200 bg-orange-50">
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
-              <Clock className="w-6 h-6 text-orange-600" />
+              <Timer className="w-6 h-6 text-orange-600" />
               <div>
                 <p className="font-semibold text-orange-900">
                   {interventionsImminentes} RDV{interventionsImminentes > 1 ? "s" : ""} cette semaine
@@ -345,7 +345,7 @@ export default function PlanningPage() {
                                   variant="default"
                                   className="bg-orange-500 text-white"
                                 >
-                                  <Clock className="w-3 h-3 mr-1" />
+                                  <Timer className="w-3 h-3 mr-1" />
                                   Imminent
                                 </Badge>
                               )}
@@ -486,7 +486,7 @@ export default function PlanningPage() {
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Informations</h3>
                 <div className="grid gap-2 text-sm">
                   <div className="flex items-center gap-2 text-slate-600">
-                    <Clock className="w-3.5 h-3.5 text-slate-400" />
+                    <Timer className="w-3.5 h-3.5 text-slate-400" />
                     <span>Créé le {selectedIntervention.date_creation
                       ? new Date(selectedIntervention.date_creation).toLocaleString("fr-FR")
                       : "-"}</span>

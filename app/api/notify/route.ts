@@ -4,6 +4,7 @@ import { createClient } from "@supabase/supabase-js";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import { sendMail } from "@/lib/mailer";
+import { sendMailGmail } from "@/lib/mailer-gmail";
 
 // Server-side Supabase client (service role for reading profiles + signed URLs)
 const supabaseAdmin = createClient(
@@ -15,12 +16,15 @@ const supabaseAdmin = createClient(
 const APP_URL = process.env.APP_URL || "http://localhost:3000";
 
 type NotifyType =
-  | "INTERVENTION_CREATED"
-  | "DEVIS_UPLOADED"
-  | "DEVIS_VALIDATED"
-  | "DEVIS_REFUSED"
-  | "RDV_PLANNED"
-  | "INTERVENTION_COMPLETED";
+  | "INTERVENTION_CREATED"        // Demande créée
+  | "INTERVENTION_APPROVED"       // Demande validée par admin
+  | "INTERVENTION_REJECTED"       // Demande refusée par admin
+  | "DEVIS_UPLOADED"              // Devis joint
+  | "DEVIS_VALIDATED"             // Devis validé (vrai devis)
+  | "DEVIS_REFUSED"               // Devis refusé (vrai devis)
+  | "RDV_PLANNED"                 // RDV planifié
+  | "INTERVENTION_COMPLETED"      // Intervention terminée
+  | "INSPECTION_WORK_COMPLETED";  // Inspection après travaux validée
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -37,6 +41,49 @@ async function getEmailsByRoles(roles: string[]): Promise<string[]> {
     return [];
   }
   return (data || []).map((p) => p.email).filter(Boolean);
+}
+
+async function getUserIdsByRoles(roles: string[]): Promise<string[]> {
+  const { data, error } = await supabaseAdmin
+    .from("profiles")
+    .select("id")
+    .in("role", roles);
+
+  if (error) {
+    console.error("[NOTIFY] Erreur lecture profiles IDs:", error);
+    return [];
+  }
+  return (data || []).map((p) => p.id).filter(Boolean);
+}
+
+async function logNotification(params: {
+  triggerBy: string;
+  eventType: NotifyType;
+  recipients: string[];
+  recipientEmails: string[];
+  status: 'sent' | 'error' | 'pending';
+  errorMessage?: string;
+  metadata?: any;
+  interventionId?: string;
+  inspectionId?: string;
+  vehicleId?: string;
+}) {
+  try {
+    await supabaseAdmin.from("notification_logs").insert({
+      trigger_by: params.triggerBy,
+      event_type: params.eventType,
+      recipients: params.recipients,
+      recipient_emails: params.recipientEmails,
+      status: params.status,
+      error_message: params.errorMessage,
+      metadata: params.metadata || {},
+      intervention_id: params.interventionId,
+      inspection_id: params.inspectionId,
+      vehicle_id: params.vehicleId,
+    });
+  } catch (err) {
+    console.error("[NOTIFY] Erreur log notification:", err);
+  }
 }
 
 async function getIntervention(id: string) {
@@ -103,6 +150,40 @@ function buildInterventionCreatedEmail(intervention: any) {
       <tr><td style="padding:4px 12px 4px 0;font-weight:bold;">Date</td><td>${fmtDate(intervention.date_creation)}</td></tr>
     </table>
     <p style="margin-top:16px;">${linkButton(`${APP_URL}/maintenance`, "Voir dans Maintenance")}</p>
+    ${footer()}
+  `;
+  return { subject, html };
+}
+
+function buildInterventionApprovedEmail(intervention: any) {
+  const subject = `[FLEETFLOW] Demande validée - ${intervention.immat}`;
+  const html = `
+    <h2>Demande d'intervention <span style="color:#16a34a">validée</span></h2>
+    <table style="border-collapse:collapse;">
+      <tr><td style="padding:4px 12px 4px 0;font-weight:bold;">Véhicule</td><td>${intervention.vehicule} (${intervention.immat})</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;font-weight:bold;">Description</td><td>${intervention.description}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;font-weight:bold;">Montant</td><td>${fmt(intervention.montant)} EUR</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;font-weight:bold;">Statut</td><td style="color:#16a34a;font-weight:bold;">En attente de planification du RDV</td></tr>
+    </table>
+    <p style="margin-top:16px;">${linkButton(`${APP_URL}/maintenance`, "Voir dans Maintenance")}</p>
+    ${footer()}
+  `;
+  return { subject, html };
+}
+
+function buildInterventionRejectedEmail(intervention: any) {
+  const subject = `[FLEETFLOW] Demande refusée - ${intervention.immat}`;
+  const reasonHtml = intervention.rejected_reason
+    ? `<tr><td style="padding:4px 12px 4px 0;font-weight:bold;">Motif du refus</td><td style="color:#dc2626;">${intervention.rejected_reason}</td></tr>`
+    : "";
+  const html = `
+    <h2>Demande d'intervention <span style="color:#dc2626">refusée</span></h2>
+    <table style="border-collapse:collapse;">
+      <tr><td style="padding:4px 12px 4px 0;font-weight:bold;">Véhicule</td><td>${intervention.vehicule} (${intervention.immat})</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;font-weight:bold;">Description</td><td>${intervention.description}</td></tr>
+      ${reasonHtml}
+    </table>
+    <p style="margin-top:16px;">${linkButton(`${APP_URL}/maintenance?tab=history`, "Voir l'historique")}</p>
     ${footer()}
   `;
   return { subject, html };
@@ -203,6 +284,42 @@ function buildInterventionCompletedEmail(intervention: any) {
   return { subject, html };
 }
 
+function buildInspectionWorkCompletedEmail(intervention: any, extra?: { hasAnomalies?: boolean; anomaliesCount?: number }) {
+  const hasAnomalies = extra?.hasAnomalies || false;
+  const color = hasAnomalies ? "#dc2626" : "#16a34a";
+  const status = hasAnomalies ? "terminés avec anomalies détectées" : "terminés - Véhicule conforme";
+  const icon = hasAnomalies ? "⚠️" : "✅";
+  
+  const subject = `[FLEETFLOW] Travaux ${hasAnomalies ? "avec anomalies" : "conformes"} - ${intervention.immat}`;
+  
+  const anomaliesHtml = hasAnomalies
+    ? `<div style="background:#fef2f2;border:1px solid #fecaca;padding:12px;border-radius:6px;margin:16px 0;">
+        <p style="color:#dc2626;font-weight:bold;margin:0;">⚠️ ${extra?.anomaliesCount || 1} anomalie(s) détectée(s) lors de l'inspection</p>
+        <p style="color:#7f1d1d;margin:8px 0 0 0;font-size:14px;">Une nouvelle intervention sera créée automatiquement pour traiter ces anomalies.</p>
+       </div>`
+    : `<div style="background:#f0fdf4;border:1px solid #bbf7d0;padding:12px;border-radius:6px;margin:16px 0;">
+        <p style="color:#16a34a;font-weight:bold;margin:0;">✅ Aucune anomalie détectée - Véhicule conforme</p>
+       </div>`;
+  
+  const html = `
+    <h2>Travaux terminés ${icon}</h2>
+    <p style="font-size:16px;color:${color};font-weight:600;">Inspection post-travaux : ${status}</p>
+    
+    <table style="border-collapse:collapse;margin-top:16px;">
+      <tr><td style="padding:4px 12px 4px 0;font-weight:bold;">Véhicule</td><td>${intervention.vehicule} (${intervention.immat})</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;font-weight:bold;">Description</td><td>${intervention.description}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;font-weight:bold;">Garage</td><td>${intervention.garage}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;font-weight:bold;">Montant final</td><td>${fmt(intervention.montant)} EUR</td></tr>
+    </table>
+    
+    ${anomaliesHtml}
+    
+    <p style="margin-top:16px;">${linkButton(`${APP_URL}/inspections`, "Voir l'inspection")}</p>
+    ${footer()}
+  `;
+  return { subject, html };
+}
+
 // ---------------------------------------------------------------------------
 // Route handler
 // ---------------------------------------------------------------------------
@@ -227,7 +344,7 @@ export async function POST(request: NextRequest) {
       .eq("id", user.id)
       .single();
 
-    if (!profile || !["admin", "direction", "agent_parc"].includes(profile.role)) {
+    if (!profile || !["admin", "direction", "agent_parc", "exploitation"].includes(profile.role)) {
       return NextResponse.json({ success: false, message: "Rôle insuffisant" }, { status: 403 });
     }
 
@@ -255,21 +372,46 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    let recipients: string[] = [];
+    let recipientIds: string[] = [];
+    let recipientEmails: string[] = [];
     let subject = "";
     let html = "";
 
     switch (type) {
       case "INTERVENTION_CREATED": {
-        recipients = await getEmailsByRoles(["admin", "direction"]);
+        // 🆕 AJOUT: exploitation notifié aussi
+        recipientIds = await getUserIdsByRoles(["admin", "direction", "exploitation"]);
+        recipientEmails = await getEmailsByRoles(["admin", "direction", "exploitation"]);
         const email = buildInterventionCreatedEmail(intervention);
         subject = email.subject;
         html = email.html;
         break;
       }
 
+      case "INTERVENTION_APPROVED": {
+        // 🆕 NOUVEAU: Remplace DEVIS_VALIDATED pour la validation initiale
+        recipientIds = await getUserIdsByRoles(["agent_parc", "admin", "direction"]);
+        recipientEmails = await getEmailsByRoles(["agent_parc", "admin", "direction"]);
+        const email = buildInterventionApprovedEmail(intervention);
+        subject = email.subject;
+        html = email.html;
+        break;
+      }
+
+      case "INTERVENTION_REJECTED": {
+        // 🆕 NOUVEAU: Remplace DEVIS_REFUSED pour le refus initial
+        // 🆕 AJOUT: exploitation notifié aussi
+        recipientIds = await getUserIdsByRoles(["agent_parc", "admin", "direction", "exploitation"]);
+        recipientEmails = await getEmailsByRoles(["agent_parc", "admin", "direction", "exploitation"]);
+        const email = buildInterventionRejectedEmail(intervention);
+        subject = email.subject;
+        html = email.html;
+        break;
+      }
+
       case "DEVIS_UPLOADED": {
-        recipients = await getEmailsByRoles(["admin", "direction"]);
+        recipientIds = await getUserIdsByRoles(["admin", "direction"]);
+        recipientEmails = await getEmailsByRoles(["admin", "direction"]);
         const signedUrl = intervention.devis_path
           ? await getSignedDevisUrl(intervention.devis_path)
           : null;
@@ -280,7 +422,9 @@ export async function POST(request: NextRequest) {
       }
 
       case "DEVIS_VALIDATED": {
-        recipients = await getEmailsByRoles(["agent_parc", "admin", "direction"]);
+        // Vrai devis validé (après upload du PDF)
+        recipientIds = await getUserIdsByRoles(["agent_parc", "admin", "direction"]);
+        recipientEmails = await getEmailsByRoles(["agent_parc", "admin", "direction"]);
         const email = buildDevisValidatedEmail(intervention);
         subject = email.subject;
         html = email.html;
@@ -288,7 +432,9 @@ export async function POST(request: NextRequest) {
       }
 
       case "DEVIS_REFUSED": {
-        recipients = await getEmailsByRoles(["agent_parc", "admin", "direction"]);
+        // Vrai devis refusé (après upload du PDF)
+        recipientIds = await getUserIdsByRoles(["agent_parc", "admin", "direction"]);
+        recipientEmails = await getEmailsByRoles(["agent_parc", "admin", "direction"]);
         const email = buildDevisRefusedEmail(intervention);
         subject = email.subject;
         html = email.html;
@@ -296,7 +442,8 @@ export async function POST(request: NextRequest) {
       }
 
       case "RDV_PLANNED": {
-        recipients = await getEmailsByRoles(["admin", "direction", "exploitation"]);
+        recipientIds = await getUserIdsByRoles(["admin", "direction", "exploitation"]);
+        recipientEmails = await getEmailsByRoles(["admin", "direction", "exploitation"]);
         const email = buildRdvPlannedEmail(intervention);
         subject = email.subject;
         html = email.html;
@@ -304,8 +451,19 @@ export async function POST(request: NextRequest) {
       }
 
       case "INTERVENTION_COMPLETED": {
-        recipients = await getEmailsByRoles(["admin", "direction", "exploitation"]);
+        recipientIds = await getUserIdsByRoles(["admin", "direction", "exploitation"]);
+        recipientEmails = await getEmailsByRoles(["admin", "direction", "exploitation"]);
         const email = buildInterventionCompletedEmail(intervention);
+        subject = email.subject;
+        html = email.html;
+        break;
+      }
+
+      case "INSPECTION_WORK_COMPLETED": {
+        // 🆕 NOUVEAU: Inspection après travaux validée
+        recipientIds = await getUserIdsByRoles(["admin", "direction", "exploitation", "agent_parc"]);
+        recipientEmails = await getEmailsByRoles(["admin", "direction", "exploitation", "agent_parc"]);
+        const email = buildInspectionWorkCompletedEmail(intervention, extra);
         subject = email.subject;
         html = email.html;
         break;
@@ -318,8 +476,21 @@ export async function POST(request: NextRequest) {
         );
     }
 
-    if (recipients.length === 0) {
+    if (recipientEmails.length === 0) {
       console.warn("[NOTIFY] Aucun destinataire trouvé pour", type);
+      
+      // Log quand même l'erreur
+      await logNotification({
+        triggerBy: user.id,
+        eventType: type,
+        recipients: [],
+        recipientEmails: [],
+        status: 'error',
+        errorMessage: 'Aucun destinataire trouvé',
+        metadata: { interventionId },
+        interventionId,
+      });
+      
       return NextResponse.json({
         success: true,
         message: "Aucun destinataire (aucun profil avec ce rôle)",
@@ -327,12 +498,37 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const result = await sendMail({ to: recipients, subject, html });
+    // Envoi de l'email (Resend d'abord, fallback Gmail si domaine non vérifié)
+    let result = await sendMail({ to: recipientEmails, subject, html });
+    
+    // Si Resend échoue à cause du domaine non vérifié, essayer Gmail
+    if (!result.success && (result.message.includes("domain is not verified") || result.message.includes("Domaine expéditeur"))) {
+      console.log("[NOTIFY] Fallback vers Gmail SMTP...");
+      result = await sendMailGmail({ to: recipientEmails, subject, html });
+    }
+
+    // 🆕 Log dans notification_logs
+    await logNotification({
+      triggerBy: user.id,
+      eventType: type,
+      recipients: recipientIds,
+      recipientEmails: recipientEmails,
+      status: result.success ? 'sent' : 'error',
+      errorMessage: result.success ? undefined : result.message,
+      metadata: { 
+        interventionId, 
+        extra,
+        subject,
+        mailerUsed: result.success && result.message.includes("Gmail") ? "gmail" : "resend",
+      },
+      interventionId,
+      vehicleId: intervention.vehicle_id,
+    });
 
     return NextResponse.json({
       success: result.success,
       message: result.message,
-      recipients,
+      recipients: recipientEmails,
     });
   } catch (error: any) {
     console.error("[NOTIFY] Erreur:", error);

@@ -71,7 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Initial auth check
     supabase.auth.getUser().then(({ data: { user: u }, error }) => {
       if (cancelled) return;
-      if (error) {
+      if (error && error.message && !error.message.includes("Auth session missing")) {
         console.error("[AuthProvider] getUser error:", error.message);
       }
       setUser(u ?? null);

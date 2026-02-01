@@ -92,3 +92,46 @@ export function CriticalVehiclesBadge() {
     </span>
   );
 }
+
+/**
+ * Badge pour les défauts d'inspection ouverts
+ */
+export function OpenDefectsBadge() {
+  const [count, setCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchOpenDefects = async () => {
+      try {
+        const { count, error } = await supabase
+          .from("vehicle_inspections")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "requires_action");
+
+        if (!error) {
+          setCount(count || 0);
+        }
+      } catch (err) {
+        console.error("[OpenDefectsBadge] Error:", err);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchOpenDefects();
+
+    // Refresh every 2 minutes
+    const interval = setInterval(fetchOpenDefects, 2 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading || count === 0) {
+    return null;
+  }
+
+  return (
+    <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-orange-500 px-1.5 text-[10px] font-bold text-white">
+      {count > 99 ? "99+" : count}
+    </span>
+  );
+}

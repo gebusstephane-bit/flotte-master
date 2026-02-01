@@ -1,10 +1,17 @@
 "use client";
 
+/**
+ * Login Page - FleetFlow 2.0
+ * Design modernisé avec nouveaux composants unifiés
+ */
+
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
-import { Loader2 } from "lucide-react";
-import { Brand } from "@/components/Brand";
+import { Mail, Lock, AlertCircle } from "lucide-react";
+import { Logo } from "@/components/brand/Logo";
+import { ButtonUnified } from "@/components/ui/button-unified";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -30,23 +37,45 @@ export default function LoginPage() {
       return;
     }
 
-    router.push("/maintenance");
+    router.push("/");
     router.refresh();
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-      <div className="w-full max-w-md mx-4">
-        {/* Brand */}
-        <div className="mb-10">
-          <Brand size="lg" showTagline dark />
-        </div>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 relative overflow-hidden">
+      {/* Background decorations */}
+      <div className="absolute inset-0 overflow-hidden">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-[#0066FF]/20 rounded-full blur-3xl" />
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-[#00D4AA]/10 rounded-full blur-3xl" />
+      </div>
+
+      <div className="w-full max-w-md mx-4 relative z-10">
+        {/* Logo animé */}
+        <motion.div 
+          className="mb-10 flex justify-center"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <Logo size="lg" variant="dark" animated />
+        </motion.div>
 
         {/* Form card */}
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
-          <h2 className="text-xl font-semibold text-slate-900 mb-6">Connexion</h2>
+        <motion.div 
+          className="bg-white rounded-2xl shadow-2xl p-8"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.1 }}
+        >
+          <div className="text-center mb-6">
+            <h2 className="text-2xl font-bold text-slate-900">Connexion</h2>
+            <p className="text-slate-500 text-sm mt-1">
+              Accédez à votre espace de gestion de flotte
+            </p>
+          </div>
 
           <form onSubmit={handleLogin} className="space-y-5">
+            {/* Email field */}
             <div>
               <label
                 htmlFor="email"
@@ -54,17 +83,23 @@ export default function LoginPage() {
               >
                 Adresse email
               </label>
-              <input
-                id="email"
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all text-slate-900"
-                placeholder="nom@entreprise.com"
-              />
+              <div className="relative">
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input
+                  id="email"
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 placeholder:text-slate-400
+                    focus:bg-white focus:border-[#0066FF] focus:ring-4 focus:ring-[#0066FF]/10 outline-none transition-all"
+                  placeholder="nom@entreprise.com"
+                  suppressHydrationWarning
+                />
+              </div>
             </div>
 
+            {/* Password field */}
             <div>
               <label
                 htmlFor="password"
@@ -72,33 +107,52 @@ export default function LoginPage() {
               >
                 Mot de passe
               </label>
-              <input
-                id="password"
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-lg border border-slate-300 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 outline-none transition-all text-slate-900"
-                placeholder="Votre mot de passe"
-              />
+              <div className="relative">
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
+                <input
+                  id="password"
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full pl-10 pr-4 py-2.5 rounded-lg border border-slate-200 bg-slate-50 text-slate-900 placeholder:text-slate-400
+                    focus:bg-white focus:border-[#0066FF] focus:ring-4 focus:ring-[#0066FF]/10 outline-none transition-all"
+                  placeholder="Votre mot de passe"
+                  suppressHydrationWarning
+                />
+              </div>
             </div>
 
+            {/* Error message */}
             {error && (
-              <div className="p-3 rounded-lg bg-red-50 border border-red-200">
+              <motion.div 
+                className="p-3 rounded-lg bg-red-50 border border-red-200 flex items-start gap-2"
+                initial={{ opacity: 0, scale: 0.95 }}
+                animate={{ opacity: 1, scale: 1 }}
+              >
+                <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
                 <p className="text-sm text-red-700">{error}</p>
-              </div>
+              </motion.div>
             )}
 
-            <button
+            {/* Submit button */}
+            <ButtonUnified
               type="submit"
-              disabled={loading}
-              className="w-full py-2.5 px-4 bg-blue-700 hover:bg-blue-600 text-white font-medium rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              variant="primary"
+              isFullWidth
+              size="lg"
+              isLoading={loading}
+              loadingText="Connexion..."
             >
-              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
-              {loading ? "Connexion..." : "Se connecter"}
-            </button>
+              Se connecter
+            </ButtonUnified>
           </form>
-        </div>
+
+          {/* Footer */}
+          <p className="text-center text-xs text-slate-400 mt-6">
+            © 2026 FleetFlow. Tous droits réservés.
+          </p>
+        </motion.div>
       </div>
     </div>
   );

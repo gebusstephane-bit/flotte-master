@@ -1,7 +1,7 @@
 "use client";
 // Fix: vehicle click crash - useCallback import + UUID validation + date guards
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import type { ReactNode } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
@@ -21,7 +21,7 @@ import {
   ArrowLeft,
   Truck,
   Calendar,
-  Clock,
+  Timer,
   AlertTriangle,
   Wrench,
   MapPin,
@@ -51,6 +51,9 @@ import { fr } from "date-fns/locale";
 import { FileDown } from "lucide-react";
 import { exportVehiclePdf } from "@/lib/pdf";
 import { DocumentUpload, type Document } from "@/components/DocumentUpload";
+import { VehicleQRCode } from "@/components/VehicleQRCode";
+import { VehicleInspectionHistory } from "@/components/vehicle/VehicleInspectionHistory";
+import { Activity } from "lucide-react";
 
 // Helper pour le statut de date
 function getDateStatus(dateString: string | null): {
@@ -106,7 +109,7 @@ function getDateStatus(dateString: string | null): {
       variant: "default",
       className: "bg-orange-500 hover:bg-orange-600",
       label: `${daysUntil}j restants`,
-      icon: <Clock className="w-3 h-3" />,
+      icon: <Timer className="w-3 h-3" />,
     };
   }
 
@@ -160,15 +163,16 @@ function safeFormatRdvDate(rdvDate: any) {
 }
 const DEVIS_BUCKET = "devis-interventions";
 
+// Validation UUID (déplacée hors du composant car fonction pure)
+const isValidUUID = (id: string | undefined | null): boolean => {
+  if (!id) return false;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+};
+
 export default function VehicleDetailPage() {
   const params = useParams();
   const router = useRouter();
-  const vehicleId = params.id as string;
-  
-  // Validation UUID
-  const isValidUUID = (id: string): boolean => {
-    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-  };
+  const vehicleId = params.id as string | undefined;
 
   const { role } = useRole();
   const permissions = getPermissions(role);
@@ -476,17 +480,22 @@ export default function VehicleDetailPage() {
           </CardContent>
         </Card>
 
-        {/* Colonne droite: Echeances */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="w-5 h-5 text-slate-600" />
-              Echeances
-            </CardTitle>
-            <CardDescription>
-              Dates de validite des controles reglementaires
-            </CardDescription>
-          </CardHeader>
+        {/* Colonne droite: QR Code + Echeances */}
+        <div className="space-y-6">
+          {/* QR Code */}
+          <VehicleQRCode vehicle={vehicle} />
+          
+          {/* Echeances */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-slate-600" />
+                Echeances
+              </CardTitle>
+              <CardDescription>
+                Dates de validite des controles reglementaires
+              </CardDescription>
+            </CardHeader>
           <CardContent className="space-y-4">
             {/* CT annuel */}
             <div className="flex items-center justify-between p-4 bg-slate-50 rounded-lg">
@@ -556,14 +565,19 @@ export default function VehicleDetailPage() {
             )}
           </CardContent>
         </Card>
+        </div>
       </div>
 
-      {/* Tabs: Interventions / Details */}
+      {/* Tabs: Interventions / Details / Inspections */}
       <Tabs defaultValue="interventions" className="w-full">
         <TabsList>
           <TabsTrigger value="interventions" className="gap-2">
             <Wrench className="w-4 h-4" />
             Interventions ({interventions.length})
+          </TabsTrigger>
+          <TabsTrigger value="inspections" className="gap-2">
+            <Activity className="w-4 h-4" />
+            Contrôles
           </TabsTrigger>
           <TabsTrigger value="details" className="gap-2">
             <FileText className="w-4 h-4" />
@@ -694,6 +708,21 @@ export default function VehicleDetailPage() {
                   </Table>
                 </div>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Tab Inspections */}
+        <TabsContent value="inspections" className="mt-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Historique des contrôles</CardTitle>
+              <CardDescription>
+                Tous les états des lieux effectués sur ce véhicule
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <VehicleInspectionHistory vehicleId={vehicle.id} />
             </CardContent>
           </Card>
         </TabsContent>

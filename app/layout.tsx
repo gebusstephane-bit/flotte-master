@@ -7,6 +7,7 @@ import { LayoutShell } from "@/components/LayoutShell";
 import { APP_NAME, APP_DESCRIPTION } from "@/lib/branding";
 import { ThemeProvider } from "next-themes";
 import { PWAProvider } from "@/components/PWAProvider";
+import { RealTimeNotifications } from "@/components/notifications/RealTimeNotifications";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -39,7 +40,10 @@ export default function RootLayout({
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
           <PWAProvider>
             <AuthProvider>
-              <LayoutShell>{children}</LayoutShell>
+              <LayoutShell>
+                {children}
+                <RealTimeNotifications />
+              </LayoutShell>
             </AuthProvider>
             <Toaster />
           </PWAProvider>

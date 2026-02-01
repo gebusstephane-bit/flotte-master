@@ -41,7 +41,7 @@ import {
   Loader2,
   Trash2,
   MapPin,
-  Clock,
+  Timer,
   Hash,
   FileDown,
   ArrowUpDown,
@@ -236,6 +236,21 @@ export default function MaintenanceClient() {
     fetchVehicles();
     fetchInterventions();
   }, [fetchVehicles, fetchInterventions]);
+
+  // Gérer le paramètre ?edit=xxx pour ouvrir directement une intervention
+  useEffect(() => {
+    const editId = searchParams.get("edit");
+    if (editId && interventions.length > 0) {
+      const intervention = interventions.find(i => i.id === editId);
+      if (intervention) {
+        // Ouvrir le detail sheet
+        setDetailIntervention(intervention);
+        setDetailOpen(true);
+        // Nettoyer l'URL
+        router.replace("/maintenance", { scroll: false });
+      }
+    }
+  }, [searchParams, interventions, router]);
 
   // Auto-match vehicle_id
   const matchedVehicle = useMemo(() => {
@@ -477,7 +492,7 @@ export default function MaintenanceClient() {
       )
     );
     toast.success("Devis validé", { description: "En attente de planification du RDV" });
-    sendNotify("DEVIS_VALIDATED", id);
+    sendNotify("INTERVENTION_APPROVED", id);
   };
 
   const openRejectModal = (intervention: Intervention) => {
@@ -523,7 +538,7 @@ export default function MaintenanceClient() {
         description: `"${rejectTarget.description}" — déplacé dans l'historique`,
       });
 
-      sendNotify("DEVIS_REFUSED", id);
+      sendNotify("INTERVENTION_REJECTED", id);
       setRejectModalOpen(false);
       setRejectTarget(null);
     } catch (err: any) {
@@ -1326,7 +1341,7 @@ export default function MaintenanceClient() {
                 <h3 className="text-xs font-semibold uppercase tracking-wider text-slate-400">Informations</h3>
                 <div className="grid gap-2 text-sm">
                   <div className="flex items-center gap-2 text-slate-600">
-                    <Clock className="w-3.5 h-3.5 text-slate-400" />
+                    <Timer className="w-3.5 h-3.5 text-slate-400" />
                     <span>Créé le {(detailIntervention as any).date_creation
                       ? new Date((detailIntervention as any).date_creation).toLocaleString("fr-FR")
                       : "-"}</span>

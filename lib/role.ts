@@ -23,6 +23,7 @@ export interface Permissions {
   canDeleteVehicle: boolean;
   canDeleteIntervention: boolean;
   canDeleteUser: boolean;
+  canValidateInspection: boolean;
 }
 
 export const PERMISSIONS: Record<UserRole, Permissions> = {
@@ -37,6 +38,7 @@ export const PERMISSIONS: Record<UserRole, Permissions> = {
     canDeleteVehicle: true,
     canDeleteIntervention: true,
     canDeleteUser: true,
+    canValidateInspection: true,
   },
   direction: {
     canValidateDevis: true,
@@ -49,6 +51,7 @@ export const PERMISSIONS: Record<UserRole, Permissions> = {
     canDeleteVehicle: true,
     canDeleteIntervention: true,
     canDeleteUser: false,
+    canValidateInspection: true,
   },
   agent_parc: {
     canValidateDevis: false,
@@ -61,6 +64,7 @@ export const PERMISSIONS: Record<UserRole, Permissions> = {
     canDeleteVehicle: false,
     canDeleteIntervention: false,
     canDeleteUser: false,
+    canValidateInspection: true,
   },
   exploitation: {
     canValidateDevis: false,
@@ -73,6 +77,7 @@ export const PERMISSIONS: Record<UserRole, Permissions> = {
     canDeleteVehicle: false,
     canDeleteIntervention: false,
     canDeleteUser: false,
+    canValidateInspection: true,  // Autorisé à valider les inspections
   },
 } as const;
 

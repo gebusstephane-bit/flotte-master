@@ -54,6 +54,7 @@ function SheetContent({
   side?: "top" | "right" | "bottom" | "left"
   showCloseButton?: boolean
 }) {
+  // Note: showCloseButton est déstructuré et ne sera pas passé au DOM via {...props}
   return (
     <SheetPortal>
       <SheetOverlay />

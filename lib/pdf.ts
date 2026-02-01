@@ -3,6 +3,13 @@ import autoTable from "jspdf-autotable";
 import type { Vehicle, Intervention } from "@/lib/supabase";
 import { VEHICLE_CONTROLS } from "@/lib/supabase";
 
+// Type extension pour jsPDF avec lastAutoTable
+interface JsPDFWithAutoTable extends jsPDF {
+  lastAutoTable?: {
+    finalY: number;
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -132,7 +139,7 @@ export function exportVehiclePdf(vehicle: Vehicle, interventions: Intervention[]
     ],
   });
 
-  y = (doc as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+  y = ((doc as JsPDFWithAutoTable).lastAutoTable?.finalY ?? 40) + 8;
 
   // Bloc contrôles
   doc.setFontSize(12);
@@ -160,7 +167,7 @@ export function exportVehiclePdf(vehicle: Vehicle, interventions: Intervention[]
     headStyles: { fillColor: [15, 23, 42], textColor: [255, 255, 255], fontStyle: "bold" },
   });
 
-  y = (doc as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+  y = ((doc as JsPDFWithAutoTable).lastAutoTable?.finalY ?? 40) + 8;
 
   // Bloc maintenance summary
   const totalCost = interventions.reduce((sum, i) => sum + (i.montant || 0), 0);
@@ -180,7 +187,7 @@ export function exportVehiclePdf(vehicle: Vehicle, interventions: Intervention[]
     ],
   });
 
-  y = (doc as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 8;
+  y = ((doc as JsPDFWithAutoTable).lastAutoTable?.finalY ?? 40) + 8;
 
   // Tableau interventions
   if (interventions.length > 0) {
@@ -254,7 +261,7 @@ export function exportRepairsPdf(rows: Intervention[], meta?: RepairExportMeta) 
   });
 
   // Total row
-  const finalY = (doc as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY + 6;
+  const finalY = ((doc as JsPDFWithAutoTable).lastAutoTable?.finalY ?? 40) + 6;
   doc.setFontSize(11);
   doc.setFont("helvetica", "bold");
   doc.text(`Total : ${fmtMontant(total)}`, doc.internal.pageSize.getWidth() - 14, finalY, { align: "right" });

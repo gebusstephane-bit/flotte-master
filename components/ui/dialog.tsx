@@ -55,6 +55,7 @@ function DialogContent({
 }: React.ComponentProps<typeof DialogPrimitive.Content> & {
   showCloseButton?: boolean
 }) {
+  // Note: showCloseButton est déstructuré et ne sera pas passé au DOM via {...props}
   return (
     <DialogPortal data-slot="dialog-portal">
       <DialogOverlay />

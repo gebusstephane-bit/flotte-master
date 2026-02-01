@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { LayoutDashboard, Truck, Wrench, Calendar, User, Users, LogOut, Loader2 } from "lucide-react";
+import { LayoutDashboard, Truck, Wrench, Calendar, User, Users, LogOut, Loader2, ClipboardCheck } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { PendingQuotesBadge, CriticalVehiclesBadge } from "@/components/NotificationBadge";
+import { PendingQuotesBadge, CriticalVehiclesBadge, OpenDefectsBadge } from "@/components/NotificationBadge";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -11,11 +11,14 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/components/AuthProvider";
 import { getPermissions, ROLE_LABELS } from "@/lib/role";
-import { Brand } from "@/components/Brand";
+import { LogoSidebar } from "@/components/brand/Logo";
+import { ClientOnly } from "./ClientOnly";
 
 const menuItems = [
   { name: "Dashboard", icon: LayoutDashboard, href: "/" },
   { name: "Mon Parc", icon: Truck, href: "/parc" },
+  { name: "Inspections", icon: ClipboardCheck, href: "/inspection" },
+  { name: "Historique", icon: ClipboardCheck, href: "/inspections" },
   { name: "Maintenance", icon: Wrench, href: "/maintenance" },
   { name: "Planning", icon: Calendar, href: "/planning" },
 ];
@@ -53,7 +56,7 @@ export function AppSidebar() {
     <aside className="fixed left-0 top-0 h-screen w-64 bg-slate-900 text-white flex flex-col">
       {/* Brand */}
       <div className="p-5 border-b border-slate-800">
-        <Brand size="sm" showTagline dark />
+        <LogoSidebar />
       </div>
 
       {/* Navigation */}
@@ -76,8 +79,11 @@ export function AppSidebar() {
                 >
                   <Icon className="w-5 h-5" />
                   <span className="font-medium">{item.name}</span>
-                  {item.href === "/maintenance" && <PendingQuotesBadge />}
-                  {item.href === "/parc" && <CriticalVehiclesBadge />}
+                  <ClientOnly>
+                    {item.href === "/maintenance" && <PendingQuotesBadge />}
+                    {item.href === "/parc" && <CriticalVehiclesBadge />}
+                    {item.href === "/inspection" && <OpenDefectsBadge />}
+                  </ClientOnly>
                 </Link>
               </li>
             );
