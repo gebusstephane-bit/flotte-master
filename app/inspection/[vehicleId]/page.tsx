@@ -32,6 +32,7 @@ import { toast } from "sonner";
 import { SignaturePad } from "@/components/inspection/SignaturePad";
 import { createAnonymousInspection } from "@/lib/inspection/public-actions";
 import { getVehicleByIdAPI } from "@/lib/inspection/public-api";
+import { getVehicleByIdDirect } from "@/lib/inspection/public-direct";
 import { classifyDefect } from "@/lib/inspection/scoring";
 import {
   DEFECT_CATEGORY_LABELS,
@@ -148,21 +149,36 @@ export default function PublicInspectionForm({
     async function loadVehicle() {
       console.log("[PublicInspectionForm] Loading vehicle ID:", vehicleId);
       console.log("[PublicInspectionForm] UserAgent:", navigator.userAgent);
+      
+      // Essai 1: API Route
       try {
+        console.log("[PublicInspectionForm] Essai API...");
         const result = await getVehicleByIdAPI(vehicleId);
-        console.log("[PublicInspectionForm] Result:", result);
-        if (!result.success) {
-          setError((result as any).error || "Véhicule non trouvé");
+        console.log("[PublicInspectionForm] API Result:", result);
+        if (result.success && result.data) {
+          dispatch({ type: "SET_VEHICLE", payload: result.data });
+          setIsLoading(false);
           return;
         }
-        if (!result.data) {
-          setError("Véhicule non trouvé");
-          return;
-        }
-        dispatch({ type: "SET_VEHICLE", payload: result.data });
+        console.log("[PublicInspectionForm] API échouée, fallback direct...");
       } catch (err: any) {
-        console.error("[PublicInspectionForm] Error:", err);
-        setError(`Erreur lors du chargement: ${err.message || "Unknown error"}`);
+        console.error("[PublicInspectionForm] API Error:", err);
+      }
+      
+      // Essai 2: Connexion Directe Supabase (fallback)
+      try {
+        console.log("[PublicInspectionForm] Essai Direct...");
+        const result = await getVehicleByIdDirect(vehicleId);
+        console.log("[PublicInspectionForm] Direct Result:", result);
+        if (result.success && result.data) {
+          dispatch({ type: "SET_VEHICLE", payload: result.data });
+          setIsLoading(false);
+          return;
+        }
+        setError((result as any).error || "Véhicule non trouvé");
+      } catch (err: any) {
+        console.error("[PublicInspectionForm] Direct Error:", err);
+        setError(`Erreur: ${err.message || "Impossible de charger le véhicule"}`);
       } finally {
         setIsLoading(false);
       }

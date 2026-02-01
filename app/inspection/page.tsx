@@ -16,6 +16,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 import { QRScanner } from "@/components/inspection/QRScanner";
 import { searchVehicleByImmatAPI } from "@/lib/inspection/public-api";
+import { searchVehicleByImmatDirect } from "@/lib/inspection/public-direct";
 import type { QRScanResult } from "@/lib/inspection/types";
 
 export default function PublicInspectionLanding() {
@@ -45,39 +46,47 @@ export default function PublicInspectionLanding() {
 
     setIsSearching(true);
     
+    let result;
+    
+    // Essai 1: API
     try {
-      const result = await searchVehicleByImmatAPI(searchTerm);
-      console.log("[DEBUG] Résultat recherche:", result);
-      
-      if (!result.success) {
-        toast.error(result.error || "Erreur lors de la recherche");
+      console.log("[DEBUG] Essai API...");
+      result = await searchVehicleByImmatAPI(searchTerm);
+      console.log("[DEBUG] API result:", result);
+      if (!result.success) throw new Error(result.error);
+    } catch (apiErr: any) {
+      console.log("[DEBUG] API failed, fallback direct:", apiErr.message);
+      // Essai 2: Direct
+      try {
+        result = await searchVehicleByImmatDirect(searchTerm);
+        console.log("[DEBUG] Direct result:", result);
+      } catch (directErr: any) {
+        console.error("[DEBUG] Direct also failed:", directErr);
+        toast.error("Erreur de connexion au serveur");
+        setIsSearching(false);
         return;
       }
-
-      if (!result.data || result.data.length === 0) {
-        toast.error(`Aucun véhicule trouvé avec "${searchTerm}"`);
-        return;
-      }
-
-      if (result.data.length === 1) {
-        // Un seul résultat : redirection directe
-        const vehicle = result.data[0];
-        console.log("[DEBUG] Redirection vers:", `/inspection/${vehicle.id}`, "ID:", vehicle.id, "Type:", typeof vehicle.id);
-        toast.success(`Véhicule ${vehicle.immat} trouvé !`);
-        router.push(`/inspection/${vehicle.id}`);
-      } else {
-        // Multiple résultats : afficher la liste
-        const vehicle = result.data[0];
-        console.log("[DEBUG] Redirection vers:", `/inspection/${vehicle.id}`, "ID:", vehicle.id);
-        toast.success(`${result.data.length} véhicules trouvés`);
-        router.push(`/inspection/${vehicle.id}`);
-      }
-    } catch (error) {
-      console.error("[DEBUG] Erreur recherche:", error);
-      toast.error("Erreur lors de la recherche");
-    } finally {
-      setIsSearching(false);
     }
+      
+    if (!result.success) {
+      toast.error(result.error || "Erreur lors de la recherche");
+      setIsSearching(false);
+      return;
+    }
+
+    if (!result.data || result.data.length === 0) {
+      toast.error(`Aucun véhicule trouvé avec "${searchTerm}"`);
+      setIsSearching(false);
+      return;
+    }
+
+    // Redirection
+    const vehicle = result.data[0];
+    console.log("[DEBUG] Redirection vers:", `/inspection/${vehicle.id}`);
+    toast.success(`Véhicule ${vehicle.immat} trouvé !`);
+    router.push(`/inspection/${vehicle.id}`);
+    
+    setIsSearching(false);
   };
 
   // Mode choix initial
