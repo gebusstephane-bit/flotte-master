@@ -78,10 +78,10 @@ async function checkRateLimit(): Promise<{ allowed: boolean; retryAfter?: number
 const DefectSchema = z.object({
   category: z.enum(["tires", "body", "mechanical", "electrical", "cleanliness", "lights", "fluids", "safety"]),
   severity: z.enum(["critical", "warning", "minor"]),
-  description: z.string().min(1).max(500),
-  location: z.string().min(1).max(200),
-  photo_url: z.string().nullable().optional(),
-  reported_at: z.string(),
+  description: z.string().min(2).max(500),
+  location: z.string().min(2).max(200),
+  photo_url: z.string().url().nullable().optional(),
+  reported_at: z.string().datetime(),
 });
 
 const AnonymousInspectionSchema = z.object({
@@ -111,7 +111,7 @@ interface AnonymousInspectionInput {
     severity: "critical" | "warning" | "minor";
     description: string;
     location: string;
-    photo_url?: string | null;
+    photo_url?: string | null | undefined;
     reported_at: string;
   }>;
   driverSignature: string;
