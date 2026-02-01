@@ -11,7 +11,7 @@ import { Camera, Keyboard, Scan, X, Search, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { searchVehicleByImmat, getVehicleById } from "@/lib/inspection/actions";
+import { searchVehicleByImmatAPI, getVehicleByIdAPI } from "@/lib/inspection/public-api";
 import type { QRScanResult } from "@/lib/inspection/types";
 
 interface QRScannerProps {
@@ -83,7 +83,7 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
     
     setIsSearching(true);
     try {
-      const result = await searchVehicleByImmat(searchQuery);
+      const result = await searchVehicleByImmatAPI(searchQuery);
       if (result.success) {
         setSearchResults(result.data);
         if (result.data.length === 0) {
@@ -111,7 +111,7 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
 
   // Charger un véhicule par ID (pour QR)
   const loadVehicleById = useCallback(async (id: string) => {
-    const result = await getVehicleById(id);
+    const result = await getVehicleByIdAPI(id);
     if (result.success) {
       selectVehicle(result.data);
     } else {

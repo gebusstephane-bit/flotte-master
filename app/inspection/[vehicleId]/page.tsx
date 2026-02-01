@@ -30,7 +30,8 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { SignaturePad } from "@/components/inspection/SignaturePad";
-import { createAnonymousInspection, getVehicleById } from "@/lib/inspection/public-actions";
+import { createAnonymousInspection } from "@/lib/inspection/public-actions";
+import { getVehicleByIdAPI } from "@/lib/inspection/public-api";
 import { classifyDefect } from "@/lib/inspection/scoring";
 import {
   DEFECT_CATEGORY_LABELS,
@@ -148,7 +149,7 @@ export default function PublicInspectionForm({
       console.log("[PublicInspectionForm] Loading vehicle ID:", vehicleId);
       console.log("[PublicInspectionForm] UserAgent:", navigator.userAgent);
       try {
-        const result = await getVehicleById(vehicleId);
+        const result = await getVehicleByIdAPI(vehicleId);
         console.log("[PublicInspectionForm] Result:", result);
         if (!result.success) {
           setError((result as any).error || "Véhicule non trouvé");

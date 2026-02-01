@@ -15,7 +15,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
 import { QRScanner } from "@/components/inspection/QRScanner";
-import { searchVehicleByImmat } from "@/lib/inspection/public-actions";
+import { searchVehicleByImmatAPI } from "@/lib/inspection/public-api";
 import type { QRScanResult } from "@/lib/inspection/types";
 
 export default function PublicInspectionLanding() {
@@ -46,7 +46,7 @@ export default function PublicInspectionLanding() {
     setIsSearching(true);
     
     try {
-      const result = await searchVehicleByImmat(searchTerm);
+      const result = await searchVehicleByImmatAPI(searchTerm);
       console.log("[DEBUG] Résultat recherche:", result);
       
       if (!result.success) {
