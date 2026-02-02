@@ -38,13 +38,13 @@ export default function SuperAdminLayout({
       const { data: { user } } = await supabase.auth.getUser();
       
       if (!user || user.email !== SUPER_ADMIN_EMAIL) {
-        router.push("/superadmin/login");
+        router.push("/superadmin-login");
         return;
       }
       
       setIsAuthorized(true);
     } catch (error) {
-      router.push("/superadmin/login");
+      router.push("/superadmin-login");
     } finally {
       setIsLoading(false);
     }
@@ -52,7 +52,7 @@ export default function SuperAdminLayout({
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    router.push("/superadmin/login");
+    router.push("/superadmin-login");
   };
 
   if (isLoading) {

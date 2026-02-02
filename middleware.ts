@@ -47,21 +47,20 @@ export async function middleware(request: NextRequest) {
 
   // SUPER ADMIN ROUTES - Protection spéciale
   if (pathname.startsWith("/superadmin")) {
-    // Allow access to login page
-    if (pathname === "/superadmin/login") {
-      // If already logged in as superadmin, redirect to dashboard
-      if (user?.email === SUPER_ADMIN_EMAIL) {
-        return NextResponse.redirect(new URL("/superadmin", request.url));
-      }
-      return NextResponse.next();
-    }
-
-    // All other /superadmin routes require superadmin
+    // All /superadmin routes require superadmin
     if (!user || user.email !== SUPER_ADMIN_EMAIL) {
-      return NextResponse.redirect(new URL("/superadmin/login", request.url));
+      return NextResponse.redirect(new URL("/superadmin-login", request.url));
     }
 
     return response;
+  }
+
+  // SUPER ADMIN LOGIN - Allow access without auth, but redirect if already logged in
+  if (pathname === "/superadmin-login") {
+    if (user?.email === SUPER_ADMIN_EMAIL) {
+      return NextResponse.redirect(new URL("/superadmin", request.url));
+    }
+    return NextResponse.next();
   }
 
   // Toutes les autres routes protégées nécessitent une session
