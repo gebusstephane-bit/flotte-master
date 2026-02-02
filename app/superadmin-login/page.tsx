@@ -47,7 +47,8 @@ export default function SuperAdminLogin() {
       });
 
       if (authError) {
-        setError("Email ou mot de passe incorrect");
+        console.error("[SuperAdmin Login] Auth error:", authError);
+        setError(`Erreur: ${authError.message}`);
         return;
       }
 
@@ -126,6 +127,9 @@ export default function SuperAdminLogin() {
             {error && (
               <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-3">
                 <p className="text-red-400 text-sm text-center">{error}</p>
+                <p className="text-slate-500 text-xs text-center mt-2">
+                  Utilisez le même mot de passe que pour <a href="/login" className="text-violet-400 underline">la connexion normale</a>
+                </p>
               </div>
             )}
 
