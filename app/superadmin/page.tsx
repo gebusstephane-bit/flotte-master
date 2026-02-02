@@ -11,7 +11,6 @@ import {
   Loader2
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { supabase } from "@/lib/supabase";
 
 interface DashboardStats {
   totalOrganizations: number;
@@ -31,52 +30,20 @@ export default function SuperAdminDashboard() {
 
   const fetchStats = async () => {
     try {
-      // Total organisations
-      const { count: totalOrgs } = await supabase
-        .from("organizations")
-        .select("*", { count: "exact", head: true });
-
-      // Total véhicules
-      const { count: totalVehicles } = await supabase
-        .from("vehicles")
-        .select("*", { count: "exact", head: true });
-
-      // Total utilisateurs
-      const { count: totalUsers } = await supabase
-        .from("profiles")
-        .select("*", { count: "exact", head: true });
-
-      // Nouvelles organisations (7 derniers jours)
-      const sevenDaysAgo = new Date();
-      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      const res = await fetch("/api/superadmin/stats");
+      const data = await res.json();
       
-      const { count: newOrgs } = await supabase
-        .from("organizations")
-        .select("*", { count: "exact", head: true })
-        .gte("created_at", sevenDaysAgo.toISOString());
-
-      // Répartition par plan
-      const { data: planData } = await supabase
-        .from("organizations")
-        .select("plan");
-
-      const planCounts = planData?.reduce((acc, org) => {
-        acc[org.plan] = (acc[org.plan] || 0) + 1;
-        return acc;
-      }, {} as Record<string, number>) || {};
-
-      const organizationsByPlan = Object.entries(planCounts).map(([plan, count]) => ({
-        plan,
-        count,
-      }));
-
-      setStats({
-        totalOrganizations: totalOrgs || 0,
-        totalVehicles: totalVehicles || 0,
-        totalUsers: totalUsers || 0,
-        newOrganizations7d: newOrgs || 0,
-        organizationsByPlan,
-      });
+      if (res.ok) {
+        setStats({
+          totalOrganizations: data.totalOrganizations || 0,
+          totalVehicles: data.totalVehicles || 0,
+          totalUsers: data.totalUsers || 0,
+          newOrganizations7d: data.newOrganizations7d || 0,
+          organizationsByPlan: data.organizationsByPlan || [],
+        });
+      } else {
+        console.error("API error:", data.error);
+      }
     } catch (error) {
       console.error("Error fetching stats:", error);
     } finally {

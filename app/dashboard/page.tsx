@@ -36,6 +36,7 @@ import { cn } from "@/lib/utils";
 import { supabase, type Vehicle, type Intervention } from "@/lib/supabase";
 import { differenceInDays, isPast, parseISO } from "date-fns";
 import { RecentInspectionsWidget } from "@/components/dashboard/RecentInspectionsWidget";
+import { logger } from "@/lib/logger";
 
 export default function ModernDashboardPage() {
   const router = useRouter();
@@ -48,22 +49,19 @@ export default function ModernDashboardPage() {
     async function fetchData() {
       try {
         setLoading(true);
-        console.log("[Dashboard] Chargement des données...");
+        logger.debug("Dashboard", "Chargement des données");
         
         const [vRes, iRes] = await Promise.all([
           supabase.from("vehicles").select("*").order("immat"),
           supabase.from("interventions").select("*").order("created_at", { ascending: false }),
         ]);
         
-        console.log("[Dashboard] Résultat véhicules:", vRes);
-        console.log("[Dashboard] Résultat interventions:", iRes);
-        
         if (vRes.error) {
-          console.error("[Dashboard] ❌ Erreur véhicules:", vRes.error);
+          logger.error("Dashboard", "Erreur chargement véhicules", { error: vRes.error.message });
           setError(`Erreur véhicules: ${vRes.error.message}`);
         }
         if (iRes.error) {
-          console.error("[Dashboard] ❌ Erreur interventions:", iRes.error);
+          logger.error("Dashboard", "Erreur chargement interventions", { error: iRes.error.message });
           setError((prev) => `${prev || ""}\nErreur interventions: ${iRes.error?.message}`);
         }
         
@@ -73,26 +71,17 @@ export default function ModernDashboardPage() {
         setVehicles(vData as Vehicle[]);
         setInterventions(iData as Intervention[]);
         
-        // Debug
+        // Log seulement si problème (pas en mode normal)
         if (vData.length === 0) {
-          console.log("[Dashboard] ⚠️ Aucun véhicule trouvé");
-          // Essayer de voir s'il y a des véhicules sans organization_id
-          const { data: allVehicles, error: checkError } = await supabase
-            .from("vehicles")
-            .select("id, immat, organization_id")
-            .limit(5);
-          console.log("[Dashboard] Check véhicules (sans filtres):", allVehicles, checkError);
-        } else {
-          console.log("[Dashboard] ✅", vData.length, "véhicules chargés");
+          logger.warn("Dashboard", "Aucun véhicule trouvé");
         }
         
-        if (iData.length === 0) {
-          console.log("[Dashboard] ⚠️ Aucune intervention trouvée");
-        } else {
-          console.log("[Dashboard] ✅", iData.length, "interventions chargées");
-        }
+        logger.info("Dashboard", "Données chargées", {
+          vehicles: vData.length,
+          interventions: iData.length,
+        });
       } catch (err: any) {
-        console.error("[Dashboard] ❌ Erreur critique:", err);
+        logger.error("Dashboard", "Erreur critique", { error: err.message });
         setError(`Erreur critique: ${err.message}`);
       } finally {
         setLoading(false);

@@ -15,7 +15,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { supabase } from "@/lib/supabase";
+import { logger } from "@/lib/logger";
 
 interface Organization {
   id: string;
@@ -48,45 +48,37 @@ export default function OrganizationsPage() {
     try {
       setLoading(true);
       
-      // Récupérer les organisations avec leurs propriétaires
-      const { data: orgsData, error: orgsError } = await supabase
-        .from("organizations")
-        .select(`
-          *,
-          owner:profiles!organizations_created_by_fkey(email, prenom, nom)
-        `)
-        .order("created_at", { ascending: false });
-
-      if (orgsError) throw orgsError;
-
-      // Pour chaque org, compter les véhicules et utilisateurs
-      const orgsWithCounts = await Promise.all(
-        (orgsData || []).map(async (org) => {
-          // Compter les véhicules
-          const { count: vehicleCount } = await supabase
-            .from("vehicles")
-            .select("*", { count: "exact", head: true })
-            .eq("organization_id", org.id);
-
-          // Compter les utilisateurs
-          const { count: userCount } = await supabase
-            .from("organization_members")
-            .select("*", { count: "exact", head: true })
-            .eq("organization_id", org.id);
-
-          return {
-            ...org,
-            owner_email: org.owner?.email,
-            owner_name: org.owner ? `${org.owner.prenom} ${org.owner.nom}` : "N/A",
-            vehicle_count: vehicleCount || 0,
-            user_count: userCount || 0,
-          };
-        })
-      );
-
-      setOrganizations(orgsWithCounts);
+      // Utiliser l'API superadmin paginée
+      const res = await fetch("/api/superadmin/organizations");
+      const data = await res.json();
+      
+      if (res.ok && data.organizations) {
+        // Charger les compteurs pour chaque org via endpoint séparé
+        const orgsWithCounts = await Promise.all(
+          data.organizations.map(async (org: Organization) => {
+            try {
+              const statsRes = await fetch(`/api/organizations/${org.id}/stats`);
+              if (statsRes.ok) {
+                const stats = await statsRes.json();
+                return {
+                  ...org,
+                  vehicle_count: stats.counts.vehicles,
+                  user_count: stats.counts.users,
+                };
+              }
+            } catch (e) {
+              logger.warn("SuperAdmin", "Failed to load stats", { orgId: org.id });
+            }
+            return org;
+          })
+        );
+        
+        setOrganizations(orgsWithCounts);
+      } else {
+        logger.error("SuperAdmin", "API error", { error: data.error });
+      }
     } catch (error) {
-      console.error("Error fetching organizations:", error);
+      logger.error("SuperAdmin", "Error fetching organizations", { error: String(error) });
     } finally {
       setLoading(false);
     }

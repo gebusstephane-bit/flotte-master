@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 const SUPER_ADMIN_EMAIL = "fleet.master.contact@gmail.com";
 
@@ -27,30 +28,40 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
-    // Récupérer les stats
-    const { count: totalOrgs } = await supabase
+    // Récupérer les stats avec supabaseAdmin (bypass RLS)
+    const { count: totalOrgs, error: orgsError } = await supabaseAdmin
       .from("organizations")
       .select("*", { count: "exact", head: true });
+    
+    if (orgsError) console.error("[superadmin/stats] orgs error:", orgsError);
 
-    const { count: totalVehicles } = await supabase
+    const { count: totalVehicles, error: vehError } = await supabaseAdmin
       .from("vehicles")
       .select("*", { count: "exact", head: true });
+    
+    if (vehError) console.error("[superadmin/stats] vehicles error:", vehError);
 
-    const { count: totalUsers } = await supabase
+    const { count: totalUsers, error: userError } = await supabaseAdmin
       .from("profiles")
       .select("*", { count: "exact", head: true });
+    
+    if (userError) console.error("[superadmin/stats] profiles error:", userError);
 
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
 
-    const { count: newOrgs } = await supabase
+    const { count: newOrgs, error: newError } = await supabaseAdmin
       .from("organizations")
       .select("*", { count: "exact", head: true })
       .gte("created_at", sevenDaysAgo.toISOString());
+    
+    if (newError) console.error("[superadmin/stats] new orgs error:", newError);
 
-    const { data: planData } = await supabase
+    const { data: planData, error: planError } = await supabaseAdmin
       .from("organizations")
       .select("plan");
+    
+    if (planError) console.error("[superadmin/stats] plan error:", planError);
 
     const planCounts = planData?.reduce((acc, org) => {
       acc[org.plan] = (acc[org.plan] || 0) + 1;
@@ -70,7 +81,7 @@ export async function GET(request: NextRequest) {
   } catch (error) {
     console.error("[superadmin/stats] Error:", error);
     return NextResponse.json(
-      { error: "Internal server error" },
+      { error: "Internal server error", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     );
   }

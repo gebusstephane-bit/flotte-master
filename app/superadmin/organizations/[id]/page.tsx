@@ -18,7 +18,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { supabase } from "@/lib/supabase";
 import {
   Dialog,
   DialogContent,
@@ -76,49 +75,16 @@ export default function OrganizationDetailPage() {
     try {
       setLoading(true);
       
-      // Récupérer l'organisation avec son propriétaire
-      const { data: orgData, error: orgError } = await supabase
-        .from("organizations")
-        .select(`
-          *,
-          owner:profiles!organizations_created_by_fkey(email, prenom, nom)
-        `)
-        .eq("id", orgId)
-        .single();
-
-      if (orgError) throw orgError;
-
-      // Compter les véhicules
-      const { count: vehicleCount } = await supabase
-        .from("vehicles")
-        .select("*", { count: "exact", head: true })
-        .eq("organization_id", orgId);
-
-      // Compter les utilisateurs
-      const { count: userCount } = await supabase
-        .from("organization_members")
-        .select("*", { count: "exact", head: true })
-        .eq("organization_id", orgId);
-
-      setOrganization({
-        ...orgData,
-        owner_email: orgData.owner?.email,
-        owner_name: orgData.owner ? `${orgData.owner.prenom} ${orgData.owner.nom}` : "N/A",
-        vehicle_count: vehicleCount || 0,
-        user_count: userCount || 0,
-      });
-
-      // Récupérer les membres
-      const { data: membersData } = await supabase
-        .from("organization_members")
-        .select(`
-          *,
-          profile:profiles(email, prenom, nom)
-        `)
-        .eq("organization_id", orgId)
-        .order("joined_at", { ascending: false });
-
-      setMembers(membersData || []);
+      // Utiliser l'API superadmin pour récupérer les données
+      const res = await fetch(`/api/superadmin/organizations/${orgId}`);
+      const data = await res.json();
+      
+      if (res.ok) {
+        setOrganization(data.organization);
+        setMembers(data.members || []);
+      } else {
+        console.error("API error:", data.error);
+      }
     } catch (error) {
       console.error("Error fetching organization:", error);
     } finally {
@@ -128,12 +94,15 @@ export default function OrganizationDetailPage() {
 
   const handleSuspend = async () => {
     try {
-      const { error } = await supabase
-        .from("organizations")
-        .update({ status: organization?.status === "active" ? "suspended" : "active" })
-        .eq("id", orgId);
+      const res = await fetch(`/api/superadmin/organizations/${orgId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          status: organization?.status === "active" ? "suspended" : "active" 
+        }),
+      });
 
-      if (error) throw error;
+      if (!res.ok) throw new Error("Failed to update");
       
       await fetchOrganizationData();
     } catch (error) {
@@ -143,13 +112,11 @@ export default function OrganizationDetailPage() {
 
   const handleDelete = async () => {
     try {
-      // Supprimer l'organisation (les données liées doivent avoir ON DELETE CASCADE)
-      const { error } = await supabase
-        .from("organizations")
-        .delete()
-        .eq("id", orgId);
+      const res = await fetch(`/api/superadmin/organizations/${orgId}`, {
+        method: "DELETE",
+      });
 
-      if (error) throw error;
+      if (!res.ok) throw new Error("Failed to delete");
       
       router.push("/superadmin/organizations");
     } catch (error) {
