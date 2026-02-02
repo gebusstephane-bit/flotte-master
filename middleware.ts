@@ -9,7 +9,9 @@ import { createMiddlewareClient } from "@/lib/supabase-middleware";
  * /auth/* : Callbacks et routes d'authentification
  */
 const PUBLIC_PATHS = [
+  "/",
   "/login",
+  "/register",             // Inscription
   "/inspection",           // Landing choix QR/Manuel
   "/auth",                 // Routes d'authentification
 ];

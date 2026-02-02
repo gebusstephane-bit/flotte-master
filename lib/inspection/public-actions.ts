@@ -11,6 +11,7 @@
  * - Validation Zod stricte
  * - Sanitization des inputs
  * - Vérification de l'existence du véhicule
+ * - Isolation par organisation (récupérée depuis le véhicule)
  * - Pas d'accès aux données sensibles
  */
 
@@ -131,6 +132,7 @@ export interface VehicleInfo {
 
 /**
  * Récupérer un véhicule par ID (public)
+ * SÉCURISÉ: Retourne uniquement les infos de base, pas l'organization_id
  */
 export async function getVehicleById(
   rawId: string
@@ -175,6 +177,7 @@ function normalizeImmat(immat: string): string {
 /**
  * Rechercher un véhicule par immatriculation (public)
  * Recherche flexible : accepte avec ou sans tirets/espaces
+ * SÉCURISÉ: Limite à 5 résultats, pas de données sensibles
  */
 export async function searchVehicleByImmat(
   immat: string
@@ -238,6 +241,7 @@ export async function searchVehicleByImmat(
 
 /**
  * Créer une inspection anonyme (public)
+ * SÉCURISÉ: Récupère l'organization_id depuis le véhicule pour isolation
  */
 export async function createAnonymousInspection(
   input: AnonymousInspectionInput
@@ -268,10 +272,21 @@ export async function createAnonymousInspection(
       };
     }
 
-    // Vérifier que le véhicule existe
-    const vehicleCheck = await getVehicleById(parsed.data.vehicleId);
-    if (!vehicleCheck.success) {
+    // Vérifier que le véhicule existe ET récupérer son organization_id
+    const { data: vehicle, error: vehicleError } = await supabaseAdmin
+      .from("vehicles")
+      .select("id, organization_id")
+      .eq("id", parsed.data.vehicleId)
+      .single();
+
+    if (vehicleError || !vehicle) {
+      console.error("[createAnonymousInspection] Véhicule non trouvé:", parsed.data.vehicleId);
       return { success: false, error: "Véhicule non trouvé" };
+    }
+
+    if (!vehicle.organization_id) {
+      console.error("[createAnonymousInspection] Véhicule sans organisation:", parsed.data.vehicleId);
+      return { success: false, error: "Configuration véhicule invalide" };
     }
 
     // Sanitization
@@ -285,65 +300,41 @@ export async function createAnonymousInspection(
       })),
     };
 
-    console.log("[createAnonymousInspection] Tentative d'insertion...");
+    console.log("[createAnonymousInspection] Tentative d'insertion avec org:", vehicle.organization_id);
     
-    // Désactiver temporairement le trigger de log_mileage pour les inspections anonymes
-    // en utilisant une transaction
-    const { data: inspection, error: insertError } = await supabaseAdmin.rpc(
-      'create_anonymous_inspection',
-      {
-        p_vehicle_id: sanitizedData.vehicleId,
-        p_inspector_name: sanitizedData.driverName,
-        p_mileage: sanitizedData.mileage,
-        p_fuel_gasoil: sanitizedData.fuelGasoil,
-        p_fuel_gnr: sanitizedData.fuelGnr,
-        p_fuel_adblue: sanitizedData.fuelAdblue,
-        p_interior_condition: sanitizedData.interiorCondition,
-        p_exterior_condition: sanitizedData.exteriorCondition,
-        p_defects: sanitizedData.defects,
-        p_digital_signature: sanitizedData.driverSignature,
-      }
-    );
-
-    if (insertError) {
-      console.error("[createAnonymousInspection] RPC error:", insertError);
-      
-      // Fallback: essayer l'insertion directe (peut échouer sur le trigger mileage)
-      const insertData = {
-        vehicle_id: sanitizedData.vehicleId,
-        driver_id: null,
-        inspector_name: sanitizedData.driverName,
-        mileage: sanitizedData.mileage,
-        fuel_gasoil: sanitizedData.fuelGasoil,
-        fuel_gnr: sanitizedData.fuelGnr,
-        fuel_adblue: sanitizedData.fuelAdblue,
-        fuel_type: "diesel",
-        interior_condition: sanitizedData.interiorCondition,
-        exterior_condition: sanitizedData.exteriorCondition,
-        defects: sanitizedData.defects,
-        digital_signature: sanitizedData.driverSignature,
-        status: "pending_review",
-        inspection_type: "anonymous_driver",
-        fuel_level: sanitizedData.fuelGasoil,
-      };
-      
-      const { data: directInsert, error: directError } = await supabaseAdmin
-        .from("vehicle_inspections")
-        .insert(insertData)
-        .select("id")
-        .single();
-      
-      if (directError) {
-        console.error("[createAnonymousInspection] Direct insert error:", directError);
-        return { success: false, error: `Erreur DB: ${directError.message}` };
-      }
-      
-      console.log("[createAnonymousInspection] Succès (direct):", directInsert?.id);
-      return { success: true, inspectionId: directInsert.id };
+    // Prparer les données d'insertion avec organization_id
+    const insertData = {
+      vehicle_id: sanitizedData.vehicleId,
+      driver_id: null,
+      inspector_name: sanitizedData.driverName,
+      mileage: sanitizedData.mileage,
+      fuel_gasoil: sanitizedData.fuelGasoil,
+      fuel_gnr: sanitizedData.fuelGnr,
+      fuel_adblue: sanitizedData.fuelAdblue,
+      fuel_type: "diesel",
+      interior_condition: sanitizedData.interiorCondition,
+      exterior_condition: sanitizedData.exteriorCondition,
+      defects: sanitizedData.defects,
+      digital_signature: sanitizedData.driverSignature,
+      status: "pending_review",
+      inspection_type: "anonymous_driver",
+      fuel_level: sanitizedData.fuelGasoil,
+      organization_id: vehicle.organization_id, // ← ISOLATION: assigne l'org du véhicule
+    };
+    
+    const { data: directInsert, error: directError } = await supabaseAdmin
+      .from("vehicle_inspections")
+      .insert(insertData)
+      .select("id")
+      .single();
+    
+    if (directError) {
+      console.error("[createAnonymousInspection] Insert error:", directError);
+      return { success: false, error: `Erreur DB: ${directError.message}` };
     }
-
-    console.log("[createAnonymousInspection] Succès (RPC):", inspection);
-    return { success: true, inspectionId: inspection };
+    
+    console.log("[createAnonymousInspection] Succès:", directInsert?.id);
+    return { success: true, inspectionId: directInsert.id };
   } catch (err) {
     console.error("[createAnonymousInspection] Unexpected error:", err);
     return { success: false, error: "Erreur inattendue" };

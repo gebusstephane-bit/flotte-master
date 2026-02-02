@@ -17,6 +17,7 @@ export interface Vehicle {
   date_tachy: string | null;
   date_atp: string | null;
   status: 'actif' | 'maintenance' | 'garage';
+  organization_id?: string;
   created_at?: string;
 }
 
@@ -59,6 +60,7 @@ export interface Intervention {
   devis_uploaded_at?: string | null;
   rejected_reason?: string | null;
   rejected_at?: string | null;
+  organization_id?: string;
   created_at?: string;
 }
 
@@ -68,5 +70,6 @@ export interface Profile {
   prenom: string;
   nom: string;
   role: import('@/lib/role').UserRole;
+  current_organization_id?: string;
   created_at?: string;
 }

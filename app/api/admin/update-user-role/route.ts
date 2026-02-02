@@ -26,12 +26,16 @@ export async function PATCH(request: NextRequest) {
 
     const { data: callerProfile } = await supabaseAdmin
       .from("profiles")
-      .select("role")
+      .select("role, current_organization_id")
       .eq("id", user.id)
       .single();
 
     if (!callerProfile || !["admin", "direction"].includes(callerProfile.role)) {
       return NextResponse.json({ error: "Accès interdit" }, { status: 403 });
+    }
+
+    if (!callerProfile.current_organization_id) {
+      return NextResponse.json({ error: "Organisation non définie" }, { status: 403 });
     }
 
     const body = await request.json();
@@ -43,6 +47,25 @@ export async function PATCH(request: NextRequest) {
 
     if (!["admin", "direction", "agent_parc", "exploitation"].includes(role)) {
       return NextResponse.json({ error: "Rôle invalide" }, { status: 400 });
+    }
+
+    // Verify target user is in the SAME organization
+    const { data: targetProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("current_organization_id")
+      .eq("id", userId)
+      .single();
+
+    if (!targetProfile) {
+      return NextResponse.json({ error: "Utilisateur introuvable" }, { status: 404 });
+    }
+
+    if (targetProfile.current_organization_id !== callerProfile.current_organization_id) {
+      console.error(`[UPDATE-ROLE] Org mismatch: target=${targetProfile.current_organization_id}, caller=${callerProfile.current_organization_id}`);
+      return NextResponse.json(
+        { error: "Accès interdit — cet utilisateur n'appartient pas à votre organisation" },
+        { status: 403 }
+      );
     }
 
     const { error } = await supabaseAdmin

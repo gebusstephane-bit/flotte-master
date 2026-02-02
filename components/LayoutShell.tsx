@@ -8,17 +8,14 @@ import { Button } from "@/components/ui/button";
 
 export function LayoutShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isLogin = pathname === "/login";
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  if (isLogin) {
-    return <>{children}</>;
-  }
+  // Routes publiques sans sidebar (landing, login, register)
+  const publicRoutes = ["/", "/login", "/register"];
+  const isPublicRoute = publicRoutes.includes(pathname) || 
+                        pathname.startsWith("/inspection/") || 
+                        pathname === "/inspection";
 
-  // Routes publiques sans sidebar (inspections anonymes seulement)
-  // /inspection = formulaire public, /inspections = historique (protégé)
-  const isPublicRoute = pathname.startsWith("/inspection/") || pathname === "/inspection" || pathname.startsWith("/login");
-  
   if (isPublicRoute) {
     return <>{children}</>;
   }

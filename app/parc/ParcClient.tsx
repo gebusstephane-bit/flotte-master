@@ -279,6 +279,21 @@ export default function ParcClient() {
         return;
       }
 
+      // Récupérer l'utilisateur courant
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Vous devez être connecté");
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Récupérer l'organization_id de l'utilisateur
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("current_organization_id")
+        .eq("id", user.id)
+        .single();
+
       const vehicleData = {
         immat: formData.immat.toUpperCase(),
         marque: formData.marque,
@@ -287,6 +302,8 @@ export default function ParcClient() {
         date_tachy: formData.date_tachy || null,
         date_atp: formData.date_atp || null,
         status: formData.status,
+        organization_id: profile?.current_organization_id,
+        created_by: user.id,
       };
 
       const { error } = await supabase.from("vehicles").insert([vehicleData]);

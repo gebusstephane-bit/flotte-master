@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 /**
- * API Route publique pour récupérer un véhicule par ID
- * Utilise l'ANON KEY (pas besoin de SERVICE_ROLE_KEY)
- * La table vehicles doit avoir une politique RLS: allow select for anon
+ * API Route publique pour récupérer un véhicule par ID ou immatriculation
+ * Utilise SERVICE ROLE pour contourner RLS (accès anonyme limité)
  * 
  * GET /api/public/vehicle?id=xxx
+ * GET /api/public/vehicle?immat=xxx
  */
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -22,37 +22,10 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  // Utiliser l'anon key (publique) - pas besoin de service_role
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || process.env.SUPABASE_ANON_KEY;
-
-  console.log("[API /public/vehicle] Env check:", { 
-    hasUrl: !!supabaseUrl, 
-    hasKey: !!supabaseAnonKey,
-    urlLength: supabaseUrl?.length,
-    keyLength: supabaseAnonKey?.length
-  });
-
-  if (!supabaseUrl || !supabaseAnonKey) {
-    console.error("[API /public/vehicle] Missing env vars");
-    return NextResponse.json(
-      { success: false, error: "Configuration serveur incomplète" },
-      { status: 500 }
-    );
-  }
-
   try {
-    // Créer un client avec l'anon key
-    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false,
-      },
-    });
-
-    let query = supabase
+    let query = supabaseAdmin
       .from("vehicles")
-      .select("id, immat, marque, type");
+      .select("id, immat, marque, type, date_ct, date_tachy, date_atp, status");
 
     if (id) {
       // Décoder l'ID si nécessaire

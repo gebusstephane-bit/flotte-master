@@ -29,10 +29,10 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    // 2. Check caller role
+    // 2. Check caller role AND get their organization
     const { data: callerProfile } = await supabaseAdmin
       .from("profiles")
-      .select("role")
+      .select("role, current_organization_id")
       .eq("id", user.id)
       .single();
 
@@ -42,6 +42,13 @@ export async function DELETE(request: NextRequest) {
     ) {
       return NextResponse.json(
         { error: "Accès interdit — seuls admin et direction peuvent supprimer un véhicule" },
+        { status: 403 }
+      );
+    }
+
+    if (!callerProfile.current_organization_id) {
+      return NextResponse.json(
+        { error: "Organisation non définie" },
         { status: 403 }
       );
     }
@@ -57,7 +64,29 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // 4. Check for linked interventions
+    // 4. Vérifier que le véhicule appartient à la MÊME organisation
+    const { data: vehicle, error: vehicleError } = await supabaseAdmin
+      .from("vehicles")
+      .select("id, organization_id")
+      .eq("id", vehicleId)
+      .single();
+
+    if (vehicleError || !vehicle) {
+      return NextResponse.json(
+        { error: "Véhicule introuvable" },
+        { status: 404 }
+      );
+    }
+
+    if (vehicle.organization_id !== callerProfile.current_organization_id) {
+      console.error(`[DELETE-VEHICLE] Org mismatch: vehicle=${vehicle.organization_id}, caller=${callerProfile.current_organization_id}`);
+      return NextResponse.json(
+        { error: "Accès interdit — ce véhicule n'appartient pas à votre organisation" },
+        { status: 403 }
+      );
+    }
+
+    // 5. Check for linked interventions
     const { data: linkedInterventions, error: intError } = await supabaseAdmin
       .from("interventions")
       .select("id, devis_path")
@@ -71,7 +100,7 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // 5. Delete linked interventions and their devis files
+    // 6. Delete linked interventions and their devis files
     if (linkedInterventions && linkedInterventions.length > 0) {
       // Delete devis files from storage
       const devisPaths = linkedInterventions
@@ -104,7 +133,7 @@ export async function DELETE(request: NextRequest) {
       }
     }
 
-    // 6. Delete the vehicle
+    // 7. Delete the vehicle
     const { error: deleteError } = await supabaseAdmin
       .from("vehicles")
       .delete()

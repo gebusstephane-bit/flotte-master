@@ -30,10 +30,10 @@ export async function GET() {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    // 2. Vérifier que le caller est admin ou direction (via service role)
+    // 2. Vérifier que le caller est admin ou direction ET récupérer son organisation
     const { data: callerProfile, error: callerError } = await supabaseAdmin
       .from("profiles")
-      .select("role")
+      .select("role, current_organization_id")
       .eq("id", user.id)
       .single();
 
@@ -46,10 +46,17 @@ export async function GET() {
       return NextResponse.json({ error: "Accès interdit" }, { status: 403 });
     }
 
-    // 3. Lire tous les profils via service role (bypass RLS)
+    // Vérifier que l'admin a une organisation
+    if (!callerProfile.current_organization_id) {
+      console.error("[api/admin/list-profiles] Caller has no organization");
+      return NextResponse.json({ error: "Organisation non définie" }, { status: 403 });
+    }
+
+    // 3. Lire SEULEMENT les profils de la MÊME organisation via service role (bypass RLS)
     const { data, error } = await supabaseAdmin
       .from("profiles")
-      .select("id, email, prenom, nom, role, created_at")
+      .select("id, email, prenom, nom, role, created_at, current_organization_id")
+      .eq("current_organization_id", callerProfile.current_organization_id)  // ← FILTRE ORGANISATION
       .order("created_at", { ascending: false });
 
     if (error) {
@@ -57,7 +64,7 @@ export async function GET() {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    console.log("[api/admin/list-profiles] OK, count:", data?.length);
+    console.log("[api/admin/list-profiles] OK, count:", data?.length, "for org:", callerProfile.current_organization_id);
     return NextResponse.json({ profiles: data ?? [] });
   } catch (err: unknown) {
     console.error("[api/admin/list-profiles] Unexpected error:", err);

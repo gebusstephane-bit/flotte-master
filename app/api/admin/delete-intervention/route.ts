@@ -29,10 +29,10 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    // 2. Check caller role
+    // 2. Check caller role AND get their organization
     const { data: callerProfile } = await supabaseAdmin
       .from("profiles")
-      .select("role")
+      .select("role, current_organization_id")
       .eq("id", user.id)
       .single();
 
@@ -42,6 +42,13 @@ export async function DELETE(request: NextRequest) {
     ) {
       return NextResponse.json(
         { error: "Accès interdit — seuls admin et direction peuvent supprimer une intervention" },
+        { status: 403 }
+      );
+    }
+
+    if (!callerProfile.current_organization_id) {
+      return NextResponse.json(
+        { error: "Organisation non définie" },
         { status: 403 }
       );
     }
@@ -57,10 +64,10 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // 4. Fetch intervention to get devis_path
+    // 4. Fetch intervention AND verify organization ownership
     const { data: intervention, error: fetchError } = await supabaseAdmin
       .from("interventions")
-      .select("id, devis_path")
+      .select("id, devis_path, organization_id")
       .eq("id", interventionId)
       .single();
 
@@ -68,6 +75,14 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json(
         { error: "Intervention introuvable" },
         { status: 404 }
+      );
+    }
+
+    if (intervention.organization_id !== callerProfile.current_organization_id) {
+      console.error(`[DELETE-INTERVENTION] Org mismatch: intervention=${intervention.organization_id}, caller=${callerProfile.current_organization_id}`);
+      return NextResponse.json(
+        { error: "Accès interdit — cette intervention n'appartient pas à votre organisation" },
+        { status: 403 }
       );
     }
 

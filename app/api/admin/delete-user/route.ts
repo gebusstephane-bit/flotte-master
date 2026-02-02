@@ -27,16 +27,23 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Non authentifié" }, { status: 401 });
     }
 
-    // 2. Check caller role — admin ONLY
+    // 2. Check caller role AND organization — admin ONLY
     const { data: callerProfile } = await supabaseAdmin
       .from("profiles")
-      .select("role")
+      .select("role, current_organization_id")
       .eq("id", user.id)
       .single();
 
     if (!callerProfile || callerProfile.role !== "admin") {
       return NextResponse.json(
         { error: "Accès interdit — seul un admin peut supprimer un utilisateur" },
+        { status: 403 }
+      );
+    }
+
+    if (!callerProfile.current_organization_id) {
+      return NextResponse.json(
+        { error: "Organisation non définie" },
         { status: 403 }
       );
     }
@@ -60,7 +67,29 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // 5. Delete profile from public.profiles
+    // 5. Verify target user is in the SAME organization
+    const { data: targetProfile } = await supabaseAdmin
+      .from("profiles")
+      .select("current_organization_id, email")
+      .eq("id", userId)
+      .single();
+
+    if (!targetProfile) {
+      return NextResponse.json(
+        { error: "Utilisateur introuvable" },
+        { status: 404 }
+      );
+    }
+
+    if (targetProfile.current_organization_id !== callerProfile.current_organization_id) {
+      console.error(`[DELETE-USER] Org mismatch: target=${targetProfile.current_organization_id}, caller=${callerProfile.current_organization_id}`);
+      return NextResponse.json(
+        { error: "Accès interdit — cet utilisateur n'appartient pas à votre organisation" },
+        { status: 403 }
+      );
+    }
+
+    // 6. Delete profile from public.profiles
     const { error: profileError } = await supabaseAdmin
       .from("profiles")
       .delete()
@@ -74,7 +103,14 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // 6. Delete auth user
+    // 7. Remove from organization_members
+    await supabaseAdmin
+      .from("organization_members")
+      .delete()
+      .eq("user_id", userId)
+      .eq("organization_id", callerProfile.current_organization_id);
+
+    // 8. Delete auth user
     const { error: authError } = await supabaseAdmin.auth.admin.deleteUser(
       userId
     );
@@ -88,7 +124,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     console.log(
-      `[DELETE-USER] User ${userId} deleted by ${user.email} (admin)`
+      `[DELETE-USER] User ${userId} (${targetProfile.email}) deleted by ${user.email} (admin)`
     );
 
     return NextResponse.json({ success: true });

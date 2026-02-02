@@ -9,7 +9,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { supabase } from "@/lib/supabase";
-import { Mail, Lock, AlertCircle } from "lucide-react";
+import { Mail, Lock, AlertCircle, ArrowLeft } from "lucide-react";
+import Link from "next/link";
 import { Logo } from "@/components/brand/Logo";
 import { ButtonUnified } from "@/components/ui/button-unified";
 

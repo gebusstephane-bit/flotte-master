@@ -4,6 +4,7 @@
  * Server Actions - Module Vehicle Inspection
  * Next.js 14+ Server Actions pour les inspections véhicules
  * VERSION SÉCURISÉE - Corrections des vulnérabilités critiques
+ * + ISOLATION MULTI-TENANT
  */
 
 import { revalidatePath } from "next/cache";
@@ -148,12 +149,13 @@ interface UserWithRole {
   id: string;
   email?: string;
   role?: UserRole;
+  current_organization_id?: string;
   app_metadata?: { role?: UserRole } | Record<string, any>;
   user_metadata?: { role?: UserRole } | Record<string, any>;
 }
 
 /**
- * Récupère l'utilisateur courant avec son rôle
+ * Récupère l'utilisateur courant avec son rôle ET son organisation
  */
 async function getCurrentUserWithRole(): Promise<UserWithRole> {
   const cookieStore = await cookies();
@@ -179,29 +181,27 @@ async function getCurrentUserWithRole(): Promise<UserWithRole> {
     throw new Error("Non authentifié");
   }
 
-  // Récupérer le rôle depuis les métadonnées ou la table profiles
+  // Récupérer le rôle ET l'organisation depuis la table profiles
   let role: UserRole = "user";
+  let orgId: string | undefined;
   
-  // Essayer d'abord les métadonnées
-  const metadataRole = user.app_metadata?.role || user.user_metadata?.role;
-  if (metadataRole && ["admin", "manager", "driver"].includes(metadataRole)) {
-    role = metadataRole as UserRole;
-  } else {
-    // Sinon, récupérer depuis la table profiles
-    const { data: profile } = await supabaseAdmin
-      .from("profiles")
-      .select("role")
-      .eq("id", user.id)
-      .single();
-    
-    if (profile?.role && ["admin", "manager", "driver"].includes(profile.role)) {
-      role = profile.role as UserRole;
-    }
+  const { data: profile } = await supabaseAdmin
+    .from("profiles")
+    .select("role, current_organization_id")
+    .eq("id", user.id)
+    .single();
+  
+  if (profile?.role) {
+    role = profile.role as UserRole;
+  }
+  if (profile?.current_organization_id) {
+    orgId = profile.current_organization_id;
   }
 
   return {
     ...user,
     role,
+    current_organization_id: orgId,
   };
 }
 
@@ -214,14 +214,14 @@ function isAdminOrManager(user: UserWithRole): boolean {
 
 /**
  * Vérifie si l'utilisateur peut modifier une inspection
- * - Admin/Manager: peuvent modifier toutes les inspections
+ * - Admin/Manager: peuvent modifier toutes les inspections de leur org
  * - Driver: ne peut modifier que ses propres inspections en pending_review
  */
 async function canModifyInspection(
   user: UserWithRole,
   inspectionId: string
 ): Promise<{ allowed: boolean; reason?: string }> {
-  // Admin et manager peuvent tout faire
+  // Admin et manager peuvent tout faire dans leur org
   if (isAdminOrManager(user)) {
     return { allowed: true };
   }
@@ -229,12 +229,17 @@ async function canModifyInspection(
   // Récupérer l'inspection
   const { data: inspection, error } = await supabaseAdmin
     .from("vehicle_inspections")
-    .select("driver_id, status")
+    .select("driver_id, status, organization_id")
     .eq("id", inspectionId)
     .single();
 
   if (error || !inspection) {
     return { allowed: false, reason: "Inspection non trouvée" };
+  }
+
+  // Vérifier que l'inspection est dans la même organisation
+  if (inspection.organization_id !== user.current_organization_id) {
+    return { allowed: false, reason: "Inspection non trouvée dans votre organisation" };
   }
 
   // Vérifier que l'utilisateur est le créateur
@@ -262,7 +267,7 @@ async function canModifyInspection(
 
 /**
  * Créer une nouvelle inspection
- * SÉCURISÉ: Rate limiting + Sanitization
+ * SÉCURISÉ: Rate limiting + Sanitization + Organisation
  */
 export async function createInspection(
   input: VehicleInspectionInput
@@ -278,8 +283,12 @@ export async function createInspection(
       };
     }
 
-    // Vérifier l'authentification
+    // Vérifier l'authentification et récupérer l'organisation
     const user = await getCurrentUserWithRole();
+    
+    if (!user.current_organization_id) {
+      return { success: false, error: "Organisation non définie" };
+    }
 
     // Rate limiting
     const rateLimitId = await getRateLimitIdentifier(user.id);
@@ -294,15 +303,14 @@ export async function createInspection(
     // Sanitization des entrées utilisateur
     const sanitizedData = sanitizeInspectionInput(parsed.data);
 
-    // Préparer les données
+    // Préparer les données avec organization_id
     const inspectionData = {
       ...sanitizedData,
       driver_id: user.id,
+      organization_id: user.current_organization_id,
       status: "pending_review" as const,
       defects: sanitizedData.defects || [],
-      // Assurer que fuel_type est défini
       fuel_type: sanitizedData.fuel_type || "diesel",
-      // Assurer que inspection_type est défini
       inspection_type: sanitizedData.inspection_type || "pre_trip",
     };
 
@@ -337,7 +345,7 @@ export async function createInspection(
 
 /**
  * Récupérer les inspections d'un véhicule
- * SÉCURISÉ: Pagination + Limit
+ * SÉCURISÉ: Pagination + Limit + Organisation
  */
 export async function getVehicleInspections(
   vehicleId: string,
@@ -345,6 +353,13 @@ export async function getVehicleInspections(
   offset: number = 0
 ): Promise<{ success: true; data: VehicleInspection[]; count: number } | { success: false; error: string }> {
   try {
+    // Vérifier l'authentification et récupérer l'organisation
+    const user = await getCurrentUserWithRole();
+    
+    if (!user.current_organization_id) {
+      return { success: false, error: "Organisation non définie" };
+    }
+
     // Validation des paramètres de pagination
     const validatedLimit = Math.min(Math.max(1, limit), MAX_PAGE_SIZE);
     const validatedOffset = Math.max(0, offset);
@@ -353,6 +368,7 @@ export async function getVehicleInspections(
       .from("vehicle_inspections")
       .select("*, profiles:prenom,nom", { count: "exact" })
       .eq("vehicle_id", vehicleId)
+      .eq("organization_id", user.current_organization_id) // ← FILTRE ORGANISATION
       .order("created_at", { ascending: false })
       .range(validatedOffset, validatedOffset + validatedLimit - 1);
 
@@ -371,7 +387,7 @@ export async function getVehicleInspections(
 
 /**
  * Récupérer toutes les inspections (pour managers)
- * SÉCURISÉ: Pagination complète + Vérification rôle
+ * SÉCURISÉ: Pagination complète + Vérification rôle + Organisation
  */
 export async function getAllInspections(params?: {
   status?: string;
@@ -381,13 +397,17 @@ export async function getAllInspections(params?: {
   dateTo?: string;
   limit?: number;
   offset?: number;
-  cursor?: string; // Pour cursor-based pagination
+  cursor?: string;
 }): Promise<
   { success: true; data: VehicleInspection[]; count: number; hasMore: boolean; nextCursor?: string } | { success: false; error: string }
 > {
   try {
-    // Vérifier l'authentification et les permissions
+    // Vérifier l'authentification et récupérer l'organisation
     const user = await getCurrentUserWithRole();
+    
+    if (!user.current_organization_id) {
+      return { success: false, error: "Organisation non définie" };
+    }
 
     // Si l'utilisateur n'est pas admin/manager, il ne peut voir que ses inspections
     const driverFilter = isAdminOrManager(user) ? params?.driverId : user.id;
@@ -404,7 +424,8 @@ export async function getAllInspections(params?: {
         vehicle:vehicles!vehicle_id(id, immat, marque, type),
         driver:profiles!driver_id(id, prenom, nom, email)`,
         { count: "exact" }
-      );
+      )
+      .eq("organization_id", user.current_organization_id); // ← FILTRE ORGANISATION
 
     // Filtres
     if (params?.status) {
@@ -423,7 +444,7 @@ export async function getAllInspections(params?: {
       query = query.lte("created_at", params.dateTo);
     }
 
-    // Cursor-based pagination (plus performant pour grandes tables)
+    // Cursor-based pagination
     if (params?.cursor) {
       query = query.lt("created_at", params.cursor);
     }
@@ -461,14 +482,18 @@ export async function getAllInspections(params?: {
 
 /**
  * Récupérer une inspection par ID
- * SÉCURISÉ: Vérification des permissions
+ * SÉCURISÉ: Vérification des permissions + Organisation
  */
 export async function getInspectionById(
   id: string
 ): Promise<{ success: true; data: VehicleInspection } | { success: false; error: string }> {
   try {
-    // Vérifier l'authentification
+    // Vérifier l'authentification et récupérer l'organisation
     const user = await getCurrentUserWithRole();
+    
+    if (!user.current_organization_id) {
+      return { success: false, error: "Organisation non définie" };
+    }
 
     const { data, error } = await supabaseAdmin
       .from("vehicle_inspections")
@@ -478,6 +503,7 @@ export async function getInspectionById(
         driver:profiles!driver_id(id, prenom, nom, email)`
       )
       .eq("id", id)
+      .eq("organization_id", user.current_organization_id) // ← FILTRE ORGANISATION
       .single();
 
     if (error) {
@@ -503,7 +529,7 @@ export async function getInspectionById(
 
 /**
  * Mettre à jour le statut d'une inspection (validation manager)
- * SÉCURISÉ: Vérification autorisation + Rôle requis
+ * SÉCURISÉ: Vérification autorisation + Rôle requis + Organisation
  */
 export async function updateInspectionStatus(
   input: z.infer<typeof InspectionStatusUpdateSchema>
@@ -518,6 +544,10 @@ export async function updateInspectionStatus(
     }
 
     const user = await getCurrentUserWithRole();
+    
+    if (!user.current_organization_id) {
+      return { success: false, error: "Organisation non définie" };
+    }
 
     // Vérifier les permissions
     const authCheck = await canModifyInspection(user, parsed.data.inspection_id);
@@ -540,6 +570,7 @@ export async function updateInspectionStatus(
         notes: sanitizedNotes,
       })
       .eq("id", parsed.data.inspection_id)
+      .eq("organization_id", user.current_organization_id) // ← FILTRE ORGANISATION
       .select()
       .single();
 
@@ -561,20 +592,28 @@ export async function updateInspectionStatus(
 
 /**
  * Supprimer une inspection (admin uniquement)
- * SÉCURISÉ: Vérification rôle admin
+ * SÉCURISÉ: Vérification rôle admin + Organisation
  */
 export async function deleteInspection(
   id: string
 ): Promise<{ success: true } | { success: false; error: string }> {
   try {
     const user = await getCurrentUserWithRole();
+    
+    if (!user.current_organization_id) {
+      return { success: false, error: "Organisation non définie" };
+    }
 
     // Seul l'admin peut supprimer
     if (user.role !== "admin") {
       return { success: false, error: "Seuls les administrateurs peuvent supprimer une inspection" };
     }
 
-    const { error } = await supabaseAdmin.from("vehicle_inspections").delete().eq("id", id);
+    const { error } = await supabaseAdmin
+      .from("vehicle_inspections")
+      .delete()
+      .eq("id", id)
+      .eq("organization_id", user.current_organization_id); // ← FILTRE ORGANISATION
 
     if (error) {
       return { success: false, error: error.message };
@@ -596,18 +635,36 @@ export async function deleteInspection(
 
 /**
  * Récupérer le résumé des inspections (vue materialisée)
- * SÉCURISÉ: Vérification rôle pour données sensibles
+ * SÉCURISÉ: Vérification rôle pour données sensibles + Organisation
  */
 export async function getInspectionSummaries(): Promise<
   { success: true; data: VehicleInspectionSummary[] } | { success: false; error: string }
 > {
   try {
-    // Vérifier l'authentification
-    await getCurrentUserWithRole();
+    // Vérifier l'authentification et récupérer l'organisation
+    const user = await getCurrentUserWithRole();
+    
+    if (!user.current_organization_id) {
+      return { success: false, error: "Organisation non définie" };
+    }
+
+    // La vue vehicle_inspection_summary ne filtre pas par org
+    // On doit filtrer manuellement via les véhicules
+    const { data: orgVehicles } = await supabaseAdmin
+      .from("vehicles")
+      .select("id")
+      .eq("organization_id", user.current_organization_id);
+
+    const vehicleIds = orgVehicles?.map(v => v.id) || [];
+
+    if (vehicleIds.length === 0) {
+      return { success: true, data: [] };
+    }
 
     const { data, error } = await supabaseAdmin
       .from("vehicle_inspection_summary")
       .select("*")
+      .in("vehicle_id", vehicleIds)
       .order("health_score", { ascending: true });
 
     if (error) {
@@ -625,22 +682,49 @@ export async function getInspectionSummaries(): Promise<
 
 /**
  * Récupérer les défauts ouverts
- * SÉCURISÉ: Vérification authentification
+ * SÉCURISÉ: Vérification authentification + Organisation
  */
 export async function getOpenDefects(): Promise<
   { success: true; data: OpenDefect[] } | { success: false; error: string }
 > {
   try {
-    // Vérifier l'authentification
-    await getCurrentUserWithRole();
+    // Vérifier l'authentification et récupérer l'organisation
+    const user = await getCurrentUserWithRole();
+    
+    if (!user.current_organization_id) {
+      return { success: false, error: "Organisation non définie" };
+    }
 
     const { data, error } = await supabaseAdmin
       .from("open_defects_view")
       .select("*")
+      .eq("organization_id", user.current_organization_id) // Nécessite que la vue expose organization_id
       .order("reported_at", { ascending: false });
 
     if (error) {
-      return { success: false, error: error.message };
+      // Fallback: filtrer via les véhicules de l'org
+      const { data: orgVehicles } = await supabaseAdmin
+        .from("vehicles")
+        .select("id")
+        .eq("organization_id", user.current_organization_id);
+
+      const vehicleIds = orgVehicles?.map(v => v.id) || [];
+      
+      if (vehicleIds.length === 0) {
+        return { success: true, data: [] };
+      }
+
+      const { data: filteredData, error: filterError } = await supabaseAdmin
+        .from("open_defects_view")
+        .select("*")
+        .in("vehicle_id", vehicleIds)
+        .order("reported_at", { ascending: false });
+
+      if (filterError) {
+        return { success: false, error: filterError.message };
+      }
+
+      return { success: true, data: (filteredData || []) as OpenDefect[] };
     }
 
     return { success: true, data: (data || []) as OpenDefect[] };
@@ -654,60 +738,81 @@ export async function getOpenDefects(): Promise<
 
 /**
  * Récupérer les statistiques globales
- * SÉCURISÉ: Vérification authentification
+ * SÉCURISÉ: Vérification authentification + Organisation
  */
 export async function getInspectionStats(): Promise<
   { success: true; data: InspectionStats } | { success: false; error: string }
 > {
   try {
-    // Vérifier l'authentification
-    await getCurrentUserWithRole();
+    // Vérifier l'authentification et récupérer l'organisation
+    const user = await getCurrentUserWithRole();
+    
+    if (!user.current_organization_id) {
+      return { success: false, error: "Organisation non définie" };
+    }
 
     const today = new Date().toISOString().split("T")[0];
 
     // Total inspections
     const { count: totalInspections, error: error1 } = await supabaseAdmin
       .from("vehicle_inspections")
-      .select("*", { count: "exact", head: true });
+      .select("*", { count: "exact", head: true })
+      .eq("organization_id", user.current_organization_id);
 
     // Critical defects
     const { count: criticalDefects, error: error2 } = await supabaseAdmin
       .from("vehicle_inspections")
       .select("*", { count: "exact", head: true })
+      .eq("organization_id", user.current_organization_id)
       .contains("defects", [{ severity: "critical" }]);
 
     // Warning defects
     const { count: warningDefects, error: error3 } = await supabaseAdmin
       .from("vehicle_inspections")
       .select("*", { count: "exact", head: true })
+      .eq("organization_id", user.current_organization_id)
       .contains("defects", [{ severity: "warning" }]);
 
     // Today's inspections
     const { count: inspectionsToday, error: error4 } = await supabaseAdmin
       .from("vehicle_inspections")
       .select("*", { count: "exact", head: true })
+      .eq("organization_id", user.current_organization_id)
       .gte("created_at", today);
 
     // Pending reviews
     const { count: pendingReviews, error: error5 } = await supabaseAdmin
       .from("vehicle_inspections")
       .select("*", { count: "exact", head: true })
+      .eq("organization_id", user.current_organization_id)
       .eq("status", "pending_review");
 
-    // Average health score
-    const { data: healthData, error: error6 } = await supabaseAdmin
-      .from("vehicle_inspection_summary")
-      .select("health_score");
+    // Average health score - filtrer par véhicules de l'org
+    const { data: orgVehicles } = await supabaseAdmin
+      .from("vehicles")
+      .select("id")
+      .eq("organization_id", user.current_organization_id);
 
-    if (error1 || error2 || error3 || error4 || error5 || error6) {
-      return { success: false, error: "Erreur lors de la récupération des statistiques" };
+    const vehicleIds = orgVehicles?.map(v => v.id) || [];
+    let averageHealthScore = 100;
+
+    if (vehicleIds.length > 0) {
+      const { data: healthData, error: error6 } = await supabaseAdmin
+        .from("vehicle_inspection_summary")
+        .select("health_score")
+        .in("vehicle_id", vehicleIds);
+
+      if (!error6 && healthData) {
+        const healthScores = healthData.map((d) => d.health_score);
+        averageHealthScore = healthScores.length > 0
+          ? Math.round(healthScores.reduce((a, b) => a + b, 0) / healthScores.length)
+          : 100;
+      }
     }
 
-    const healthScores = healthData?.map((d) => d.health_score) || [];
-    const averageHealthScore =
-      healthScores.length > 0
-        ? Math.round(healthScores.reduce((a, b) => a + b, 0) / healthScores.length)
-        : 100;
+    if (error1 || error2 || error3 || error4 || error5) {
+      return { success: false, error: "Erreur lors de la récupération des statistiques" };
+    }
 
     return {
       success: true,
@@ -734,7 +839,7 @@ export async function getInspectionStats(): Promise<
 
 /**
  * Récupérer un véhicule par ID (pour QR scan)
- * SÉCURISÉ: Validation ID + Authentification
+ * SÉCURISÉ: Validation ID + Authentification + Organisation
  */
 export async function getVehicleById(
   id: string
@@ -748,13 +853,18 @@ export async function getVehicleById(
       return { success: false, error: "ID de véhicule invalide" };
     }
 
-    // Vérifier l'authentification
-    await getCurrentUserWithRole();
+    // Vérifier l'authentification et récupérer l'organisation
+    const user = await getCurrentUserWithRole();
+    
+    if (!user.current_organization_id) {
+      return { success: false, error: "Organisation non définie" };
+    }
 
     const { data, error } = await supabaseAdmin
       .from("vehicles")
       .select("id, immat, marque, type")
       .eq("id", id)
+      .eq("organization_id", user.current_organization_id) // ← FILTRE ORGANISATION
       .single();
 
     if (error) {
@@ -772,7 +882,7 @@ export async function getVehicleById(
 
 /**
  * Rechercher un véhicule par immatriculation
- * SÉCURISÉ: Sanitization input + Rate limiting + Authentification
+ * SÉCURISÉ: Sanitization input + Rate limiting + Authentification + Organisation
  */
 export async function searchVehicleByImmat(
   immat: string
@@ -781,8 +891,12 @@ export async function searchVehicleByImmat(
   | { success: false; error: string }
 > {
   try {
-    // Vérifier l'authentification
+    // Vérifier l'authentification et récupérer l'organisation
     const user = await getCurrentUserWithRole();
+    
+    if (!user.current_organization_id) {
+      return { success: false, error: "Organisation non définie" };
+    }
 
     // Rate limiting sur la recherche
     const rateLimitId = `vehicle:search:${user.id}`;
@@ -813,6 +927,7 @@ export async function searchVehicleByImmat(
     const { data, error } = await supabaseAdmin
       .from("vehicles")
       .select("id, immat, marque, type")
+      .eq("organization_id", user.current_organization_id) // ← FILTRE ORGANISATION
       .ilike("immat", `%${sanitizedImmat}%`)
       .limit(5);
 
