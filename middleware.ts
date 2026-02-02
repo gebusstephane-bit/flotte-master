@@ -13,6 +13,7 @@ const PUBLIC_PATHS = [
   "/inspection",
   "/auth",
   "/superadmin-login",
+  "/init-superadmin",
 ];
 
 function isPublicRoute(pathname: string): boolean {
