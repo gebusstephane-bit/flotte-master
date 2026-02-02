@@ -64,7 +64,11 @@ export default function SuperAdminLayout({
   }
 
   if (!isAuthorized) {
-    return null;
+    return (
+      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
+        <p className="text-white">Redirection...</p>
+      </div>
+    );
   }
 
   const navItems = [

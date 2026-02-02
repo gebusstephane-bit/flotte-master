@@ -10,11 +10,13 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  // Routes publiques sans sidebar (landing, login, register)
-  const publicRoutes = ["/", "/login", "/register"];
+  // Routes publiques sans sidebar (landing, login, register, superadmin)
+  const publicRoutes = ["/", "/login", "/register", "/superadmin-login", "/init-superadmin"];
   const isPublicRoute = publicRoutes.includes(pathname) || 
                         pathname.startsWith("/inspection/") || 
-                        pathname === "/inspection";
+                        pathname === "/inspection" ||
+                        pathname.startsWith("/superadmin/") ||
+                        pathname === "/superadmin";
 
   if (isPublicRoute) {
     return <>{children}</>;
