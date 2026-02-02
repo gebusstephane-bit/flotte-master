@@ -8,6 +8,11 @@ import { supabaseAdmin } from "@/lib/supabaseAdmin";
  * GET /api/public/vehicle?id=xxx
  * GET /api/public/vehicle?immat=xxx
  */
+
+function normalizeImmat(immat: string): string {
+  return immat.toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const id = searchParams.get("id");
@@ -23,34 +28,78 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    let query = supabaseAdmin
-      .from("vehicles")
-      .select("id, immat, marque, type, date_ct, date_tachy, date_atp, status");
-
     if (id) {
-      // Décoder l'ID si nécessaire
+      // Recherche par ID
       const decodedId = decodeURIComponent(id).trim();
       console.log("[API /public/vehicle] Looking up by ID:", decodedId);
-      query = query.eq("id", decodedId);
-    } else if (immat) {
-      // Normaliser l'immatriculation
-      const normalizedImmat = immat.toUpperCase().replace(/[^A-Z0-9]/g, "");
-      console.log("[API /public/vehicle] Looking up by immat:", normalizedImmat);
-      query = query.ilike("immat", `%${normalizedImmat}%`);
+      
+      const { data, error } = await supabaseAdmin
+        .from("vehicles")
+        .select("id, immat, marque, type, date_ct, date_tachy, date_atp, status")
+        .eq("id", decodedId)
+        .single();
+
+      if (error || !data) {
+        console.log("[API /public/vehicle] Not found by ID");
+        return NextResponse.json(
+          { success: false, error: "Véhicule non trouvé" },
+          { status: 404 }
+        );
+      }
+
+      console.log("[API /public/vehicle] Found by ID:", data);
+      return NextResponse.json({ success: true, data });
     }
 
-    const { data, error } = await query.single();
+    // Recherche par immatriculation
+    if (immat) {
+      const normalizedImmat = normalizeImmat(immat);
+      console.log("[API /public/vehicle] Looking up by immat:", immat, "normalized:", normalizedImmat);
 
-    if (error) {
-      console.error("[API /public/vehicle] Supabase error:", error);
-      return NextResponse.json(
-        { success: false, error: "Véhicule non trouvé" },
-        { status: 404 }
-      );
+      // Stratégie : récupérer tous les véhicules et filtrer en mémoire
+      // pour gérer les différents formats (avec/sans tirets)
+      const { data: allVehicles, error } = await supabaseAdmin
+        .from("vehicles")
+        .select("id, immat, marque, type, date_ct, date_tachy, date_atp, status")
+        .limit(1000);
+
+      if (error) {
+        console.error("[API /public/vehicle] Supabase error:", error);
+        return NextResponse.json(
+          { success: false, error: "Erreur base de données" },
+          { status: 500 }
+        );
+      }
+
+      // Filtrer les véhicules qui correspondent
+      const matchingVehicles = (allVehicles || []).filter(v => {
+        const dbImmatNormalized = normalizeImmat(v.immat);
+        // Match si l'une contient l'autre (dans les deux sens)
+        return dbImmatNormalized.includes(normalizedImmat) || 
+               normalizedImmat.includes(dbImmatNormalized) ||
+               v.immat.toUpperCase().includes(immat.toUpperCase()) ||
+               immat.toUpperCase().includes(v.immat.toUpperCase());
+      });
+
+      console.log("[API /public/vehicle] Found", matchingVehicles.length, "matches");
+
+      if (matchingVehicles.length === 0) {
+        return NextResponse.json(
+          { success: false, error: "Véhicule non trouvé" },
+          { status: 404 }
+        );
+      }
+
+      // Retourner le premier match (le plus proche)
+      const bestMatch = matchingVehicles[0];
+      console.log("[API /public/vehicle] Best match:", bestMatch);
+      return NextResponse.json({ success: true, data: bestMatch });
     }
 
-    console.log("[API /public/vehicle] Found:", data);
-    return NextResponse.json({ success: true, data });
+    return NextResponse.json(
+      { success: false, error: "Paramètre invalide" },
+      { status: 400 }
+    );
 
   } catch (err: any) {
     console.error("[API /public/vehicle] Exception:", err);

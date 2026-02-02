@@ -1,36 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createMiddlewareClient } from "@/lib/supabase-middleware";
 
+const SUPER_ADMIN_EMAIL = "fleet.master.contact@gmail.com";
+
 /**
  * ROUTES PUBLIQUES - Accessibles SANS authentification
- * 
- * /inspection/* : Formulaire d'inspection pour conducteurs anonymes
- * /login : Page de connexion
- * /auth/* : Callbacks et routes d'authentification
  */
 const PUBLIC_PATHS = [
   "/",
   "/login",
-  "/register",             // Inscription
-  "/inspection",           // Landing choix QR/Manuel
-  "/auth",                 // Routes d'authentification
+  "/register",
+  "/inspection",
+  "/auth",
 ];
 
-/**
- * Vérifie si le pathname correspond à une route publique
- */
 function isPublicRoute(pathname: string): boolean {
-  // Vérifier les préfixes publics
   const isPublicPrefix = PUBLIC_PATHS.some((p) => 
     pathname === p || pathname.startsWith(p + "/")
   );
   
   if (isPublicPrefix) return true;
   
-  // API routes sont gérées séparément
   if (pathname.startsWith("/api")) return true;
   
-  // Static assets
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/static") ||
@@ -50,17 +42,32 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Toutes les autres routes nécessitent une session
   const { supabase, response } = createMiddlewareClient(request);
+  const { data: { user } } = await supabase.auth.getUser();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // SUPER ADMIN ROUTES - Protection spéciale
+  if (pathname.startsWith("/superadmin")) {
+    // Allow access to login page
+    if (pathname === "/superadmin/login") {
+      // If already logged in as superadmin, redirect to dashboard
+      if (user?.email === SUPER_ADMIN_EMAIL) {
+        return NextResponse.redirect(new URL("/superadmin", request.url));
+      }
+      return NextResponse.next();
+    }
 
+    // All other /superadmin routes require superadmin
+    if (!user || user.email !== SUPER_ADMIN_EMAIL) {
+      return NextResponse.redirect(new URL("/superadmin/login", request.url));
+    }
+
+    return response;
+  }
+
+  // Toutes les autres routes protégées nécessitent une session
   if (!user) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = "/login";
-    // Stocker l'URL d'origine pour redirection post-login
     loginUrl.searchParams.set("redirect", pathname);
     return NextResponse.redirect(loginUrl);
   }

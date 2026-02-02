@@ -397,6 +397,27 @@ export default function MaintenanceClient() {
 
       setIsCreating(true);
 
+      // Récupérer l'utilisateur et son organisation
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("Vous devez être connecté");
+        setIsCreating(false);
+        return;
+      }
+
+      // Récupérer le profil avec l'organisation
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("current_organization_id")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError || !profile?.current_organization_id) {
+        toast.error("Organisation non définie");
+        setIsCreating(false);
+        return;
+      }
+
       // 1. Insert intervention
       const payload: any = {
         vehicule,
@@ -407,6 +428,8 @@ export default function MaintenanceClient() {
         status: "pending" as InterventionStatus,
         date_creation: new Date().toISOString(),
         vehicle_id: newVehicleId,
+        organization_id: profile.current_organization_id,
+        created_by: user.id,
       };
 
       const { data, error } = await supabase

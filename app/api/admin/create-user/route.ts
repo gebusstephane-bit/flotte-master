@@ -65,6 +65,10 @@ export async function POST(request: NextRequest) {
       email,
       password,
       email_confirm: true,
+      user_metadata: {
+        first_name: prenom,
+        last_name: nom,
+      },
     });
 
     if (authError) {
@@ -79,21 +83,55 @@ export async function POST(request: NextRequest) {
 
     console.log("[create-user] Auth user created:", newUser.user.id);
 
-    // Create profile linked to the SAME organization as the admin
-    const profileData = {
-      id: newUser.user.id,
-      email,
-      prenom,
-      nom,
-      role,
-      current_organization_id: callerProfile.current_organization_id,
-    };
+    // Attendre un peu que le trigger s'exécute (il crée automatiquement un profil)
+    await new Promise(resolve => setTimeout(resolve, 500));
 
-    console.log("[create-user] Inserting profile:", profileData);
-
-    const { error: profileError } = await supabaseAdmin
+    // Vérifier si le profil existe déjà (créé par le trigger)
+    const { data: existingProfile, error: checkError } = await supabaseAdmin
       .from("profiles")
-      .insert(profileData);
+      .select("id")
+      .eq("id", newUser.user.id)
+      .single();
+
+    if (checkError && checkError.code !== 'PGRST116') { // PGRST116 = not found
+      console.error("[create-user] Error checking existing profile:", checkError);
+    }
+
+    let profileError;
+
+    if (existingProfile) {
+      // Le profil existe déjà (créé par le trigger), on le met à jour
+      console.log("[create-user] Profile already exists (trigger), updating...");
+      const { error: updateError } = await supabaseAdmin
+        .from("profiles")
+        .update({
+          email,
+          prenom,
+          nom,
+          role,
+          current_organization_id: callerProfile.current_organization_id,
+        })
+        .eq("id", newUser.user.id);
+      
+      profileError = updateError;
+    } else {
+      // Le profil n'existe pas, on le crée
+      console.log("[create-user] Creating new profile...");
+      const profileData = {
+        id: newUser.user.id,
+        email,
+        prenom,
+        nom,
+        role,
+        current_organization_id: callerProfile.current_organization_id,
+      };
+
+      const { error: insertError } = await supabaseAdmin
+        .from("profiles")
+        .insert(profileData);
+      
+      profileError = insertError;
+    }
 
     if (profileError) {
       console.error("[create-user] Profile error:", profileError);
@@ -102,7 +140,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Erreur profil: ${profileError.message}` }, { status: 500 });
     }
 
-    console.log("[create-user] Profile created successfully");
+    console.log("[create-user] Profile saved successfully");
 
     // Add to organization_members
     const memberData = {

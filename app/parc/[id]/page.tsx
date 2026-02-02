@@ -55,6 +55,19 @@ import { VehicleQRCode } from "@/components/VehicleQRCode";
 import { VehicleInspectionHistory } from "@/components/vehicle/VehicleInspectionHistory";
 import { Activity } from "lucide-react";
 
+// Helper pour formater une date en toute sécurité
+function safeFormatDate(dateString: string | null | undefined, fallback = "Non défini"): string {
+  if (!dateString) return fallback;
+  
+  try {
+    const date = parseISO(dateString);
+    if (!isValid(date)) return "Date invalide";
+    return format(date, "d MMMM yyyy", { locale: fr });
+  } catch {
+    return "Date invalide";
+  }
+}
+
 // Helper pour le statut de date
 function getDateStatus(dateString: string | null): {
   variant: "destructive" | "default" | "secondary" | "outline";
@@ -506,9 +519,7 @@ export default function VehicleDetailPage() {
                 <div>
                   <p className="font-medium text-slate-900">CT annuel</p>
                   <p className="text-sm text-slate-500">
-                    {vehicle.date_ct
-                      ? format(parseISO(vehicle.date_ct), "d MMMM yyyy", { locale: fr })
-                      : "Non defini"}
+                    {safeFormatDate(vehicle.date_ct)}
                   </p>
                 </div>
               </div>
@@ -528,9 +539,7 @@ export default function VehicleDetailPage() {
                   <div>
                     <p className="font-medium text-slate-900">Tachygraphe</p>
                     <p className="text-sm text-slate-500">
-                      {vehicle.date_tachy
-                        ? format(parseISO(vehicle.date_tachy), "d MMMM yyyy", { locale: fr })
-                        : "Non defini"}
+                      {safeFormatDate(vehicle.date_tachy)}
                     </p>
                   </div>
                 </div>
@@ -551,9 +560,7 @@ export default function VehicleDetailPage() {
                   <div>
                     <p className="font-medium text-slate-900">ATP (Frigo)</p>
                     <p className="text-sm text-slate-500">
-                      {vehicle.date_atp
-                        ? format(parseISO(vehicle.date_atp), "d MMMM yyyy", { locale: fr })
-                        : "Non defini"}
+                      {safeFormatDate(vehicle.date_atp)}
                     </p>
                   </div>
                 </div>
@@ -746,9 +753,16 @@ export default function VehicleDetailPage() {
                   <div>
                     <p className="text-sm text-slate-500">Date d&apos;ajout au parc</p>
                     <p className="font-medium">
-                      {vehicle.created_at
-                        ? format(parseISO(vehicle.created_at), "d MMMM yyyy 'a' HH:mm", { locale: fr })
-                        : "Non disponible"}
+                      {(() => {
+                        if (!vehicle.created_at) return "Non disponible";
+                        try {
+                          const date = parseISO(vehicle.created_at);
+                          if (!isValid(date)) return "Date invalide";
+                          return format(date, "d MMMM yyyy 'à' HH:mm", { locale: fr });
+                        } catch {
+                          return "Date invalide";
+                        }
+                      })()}
                     </p>
                   </div>
                 </div>

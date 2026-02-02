@@ -23,11 +23,11 @@ interface QRScannerProps {
 type ScanMode = "camera" | "manual";
 
 export function QRScanner({ onScan, onError }: QRScannerProps) {
-  const [mode, setMode] = useState<ScanMode>("camera");
+  const [mode, setMode] = useState<ScanMode>("manual"); // Commencer en mode manuel par défaut
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<Array<{ id: string; immat: string; marque: string; type: string }>>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [hasCamera, setHasCamera] = useState(true);
+  const [hasCamera, setHasCamera] = useState<boolean | null>(null); // null = pas encore testé
   const [isScanning, setIsScanning] = useState(false);
   const scannerRef = useRef<any>(null);
   const qrContainerRef = useRef<HTMLDivElement>(null);
@@ -132,7 +132,7 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
             }
           );
         } catch (err: any) {
-          console.error("[QRScanner] Erreur démarrage:", err);
+          // Silencieux - ne pas polluer la console
           setIsScanning(false);
           setHasCamera(false);
           setMode("manual");
@@ -141,7 +141,7 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
       }, 100); // Petit délai pour laisser React rendre le DOM
       
     } catch (err: any) {
-      console.error("[QRScanner] Erreur:", err);
+      // Silencieux - ne pas polluer la console
       setHasCamera(false);
       setMode("manual");
       onError?.("Caméra indisponible");
@@ -155,9 +155,28 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
     };
   }, [stopScanner]);
 
+  // Détection silencieuse de la caméra au montage
+  useEffect(() => {
+    const checkCamera = async () => {
+      try {
+        if (typeof navigator !== 'undefined' && navigator.mediaDevices) {
+          const devices = await navigator.mediaDevices.enumerateDevices();
+          const hasVideoInput = devices.some(d => d.kind === 'videoinput');
+          setHasCamera(hasVideoInput);
+        } else {
+          setHasCamera(false);
+        }
+      } catch (err) {
+        // Silencieux - pas d'erreur console
+        setHasCamera(false);
+      }
+    };
+    checkCamera();
+  }, []);
+
   // Démarrer le scanner automatiquement quand on passe en mode caméra
   useEffect(() => {
-    if (mode === "camera" && hasCamera && !isScanning) {
+    if (mode === "camera" && hasCamera === true && !isScanning) {
       startQRScanner();
     }
   }, [mode, hasCamera, isScanning, startQRScanner]);
@@ -215,7 +234,7 @@ export function QRScanner({ onScan, onError }: QRScannerProps) {
           onClick={() => {
             setMode("camera");
           }}
-          disabled={!hasCamera}
+          disabled={hasCamera === false}
         >
           <Camera className="w-4 h-4 mr-2" />
           Caméra
