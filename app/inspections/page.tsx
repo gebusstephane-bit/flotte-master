@@ -297,7 +297,7 @@ export default function InspectionsHistoryPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 h-[calc(100vh-4rem)] overflow-y-auto pr-2">
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>

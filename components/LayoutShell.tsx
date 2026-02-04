@@ -13,11 +13,12 @@ export function LayoutShell({ children }: { children: React.ReactNode }) {
   // Routes publiques sans sidebar (landing, login, register, superadmin)
   const publicRoutes = ["/", "/login", "/register", "/superadmin-login", "/init-superadmin"];
   const isPublicRoute = publicRoutes.includes(pathname) || 
-                        pathname.startsWith("/inspection") ||
+                        pathname.startsWith("/inspection/") || // Inspection publique QR (avec vehicleId)
+                        pathname === "/inspection" || // Formulaire d'inspection publique
                         pathname.startsWith("/superadmin");
 
   if (isPublicRoute) {
-    return <>{children}</>;
+    return <div className="min-h-screen overflow-y-auto">{children}</div>;
   }
 
   return (

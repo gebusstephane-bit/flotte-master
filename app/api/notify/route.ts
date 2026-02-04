@@ -30,29 +30,51 @@ type NotifyType =
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function getEmailsByRoles(roles: string[]): Promise<string[]> {
-  const { data, error } = await supabaseAdmin
+async function getEmailsByRoles(roles: string[], organizationId?: string): Promise<string[]> {
+  console.log("[NOTIFY] getEmailsByRoles - roles:", roles, "org:", organizationId);
+  
+  let query = supabaseAdmin
     .from("profiles")
-    .select("email")
+    .select("email, current_organization_id")
     .in("role", roles);
+  
+  // Filtrer par organisation si spécifiée
+  if (organizationId) {
+    query = query.eq("current_organization_id", organizationId);
+  }
+  
+  const { data, error } = await query;
 
   if (error) {
     console.error("[NOTIFY] Erreur lecture profiles:", error);
     return [];
   }
+  
+  console.log("[NOTIFY] getEmailsByRoles - found:", data?.length || 0, "emails:", data?.map(p => p.email));
   return (data || []).map((p) => p.email).filter(Boolean);
 }
 
-async function getUserIdsByRoles(roles: string[]): Promise<string[]> {
-  const { data, error } = await supabaseAdmin
+async function getUserIdsByRoles(roles: string[], organizationId?: string): Promise<string[]> {
+  console.log("[NOTIFY] getUserIdsByRoles - roles:", roles, "org:", organizationId);
+  
+  let query = supabaseAdmin
     .from("profiles")
-    .select("id")
+    .select("id, current_organization_id")
     .in("role", roles);
+  
+  // Filtrer par organisation si spécifiée
+  if (organizationId) {
+    query = query.eq("current_organization_id", organizationId);
+  }
+  
+  const { data, error } = await query;
 
   if (error) {
     console.error("[NOTIFY] Erreur lecture profiles IDs:", error);
     return [];
   }
+  
+  console.log("[NOTIFY] getUserIdsByRoles - found:", data?.length || 0, "users");
   return (data || []).map((p) => p.id).filter(Boolean);
 }
 
@@ -338,15 +360,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ success: false, message: "Non authentifié" }, { status: 401 });
     }
 
-    const { data: profile } = await supabaseAdmin
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from("profiles")
-      .select("role")
+      .select("role, current_organization_id")
       .eq("id", user.id)
       .single();
 
-    if (!profile || !["admin", "direction", "agent_parc", "exploitation"].includes(profile.role)) {
+    console.log("[NOTIFY] User:", user.id, "Profile:", profile, "Error:", profileError);
+
+    if (!profile) {
+      console.error("[NOTIFY] Profil non trouvé pour user:", user.id);
+      return NextResponse.json({ success: false, message: "Profil non trouvé" }, { status: 403 });
+    }
+
+    if (!["admin", "direction", "agent_parc", "exploitation", "mecanicien"].includes(profile.role)) {
+      console.error("[NOTIFY] Rôle insuffisant:", profile.role, "pour user:", user.id);
       return NextResponse.json({ success: false, message: "Rôle insuffisant" }, { status: 403 });
     }
+    
+    console.log("[NOTIFY] Rôle autorisé:", profile.role, "Org:", profile.current_organization_id);
+    
+    // Récupérer l'organization_id pour filtrer les destinataires
+    const userOrgId = profile.current_organization_id;
 
     const body = await request.json();
     const { type, interventionId, extra } = body as {
@@ -380,8 +415,8 @@ export async function POST(request: NextRequest) {
     switch (type) {
       case "INTERVENTION_CREATED": {
         // 🆕 AJOUT: exploitation notifié aussi
-        recipientIds = await getUserIdsByRoles(["admin", "direction", "exploitation"]);
-        recipientEmails = await getEmailsByRoles(["admin", "direction", "exploitation"]);
+        recipientIds = await getUserIdsByRoles(["admin", "direction", "exploitation"], userOrgId);
+        recipientEmails = await getEmailsByRoles(["admin", "direction", "exploitation"], userOrgId);
         const email = buildInterventionCreatedEmail(intervention);
         subject = email.subject;
         html = email.html;
@@ -390,8 +425,8 @@ export async function POST(request: NextRequest) {
 
       case "INTERVENTION_APPROVED": {
         // 🆕 NOUVEAU: Remplace DEVIS_VALIDATED pour la validation initiale
-        recipientIds = await getUserIdsByRoles(["agent_parc", "admin", "direction"]);
-        recipientEmails = await getEmailsByRoles(["agent_parc", "admin", "direction"]);
+        recipientIds = await getUserIdsByRoles(["agent_parc", "admin", "direction"], userOrgId);
+        recipientEmails = await getEmailsByRoles(["agent_parc", "admin", "direction"], userOrgId);
         const email = buildInterventionApprovedEmail(intervention);
         subject = email.subject;
         html = email.html;
@@ -401,8 +436,8 @@ export async function POST(request: NextRequest) {
       case "INTERVENTION_REJECTED": {
         // 🆕 NOUVEAU: Remplace DEVIS_REFUSED pour le refus initial
         // 🆕 AJOUT: exploitation notifié aussi
-        recipientIds = await getUserIdsByRoles(["agent_parc", "admin", "direction", "exploitation"]);
-        recipientEmails = await getEmailsByRoles(["agent_parc", "admin", "direction", "exploitation"]);
+        recipientIds = await getUserIdsByRoles(["agent_parc", "admin", "direction", "exploitation"], userOrgId);
+        recipientEmails = await getEmailsByRoles(["agent_parc", "admin", "direction", "exploitation"], userOrgId);
         const email = buildInterventionRejectedEmail(intervention);
         subject = email.subject;
         html = email.html;
@@ -410,8 +445,8 @@ export async function POST(request: NextRequest) {
       }
 
       case "DEVIS_UPLOADED": {
-        recipientIds = await getUserIdsByRoles(["admin", "direction"]);
-        recipientEmails = await getEmailsByRoles(["admin", "direction"]);
+        recipientIds = await getUserIdsByRoles(["admin", "direction"], userOrgId);
+        recipientEmails = await getEmailsByRoles(["admin", "direction"], userOrgId);
         const signedUrl = intervention.devis_path
           ? await getSignedDevisUrl(intervention.devis_path)
           : null;
@@ -423,8 +458,8 @@ export async function POST(request: NextRequest) {
 
       case "DEVIS_VALIDATED": {
         // Vrai devis validé (après upload du PDF)
-        recipientIds = await getUserIdsByRoles(["agent_parc", "admin", "direction"]);
-        recipientEmails = await getEmailsByRoles(["agent_parc", "admin", "direction"]);
+        recipientIds = await getUserIdsByRoles(["agent_parc", "admin", "direction"], userOrgId);
+        recipientEmails = await getEmailsByRoles(["agent_parc", "admin", "direction"], userOrgId);
         const email = buildDevisValidatedEmail(intervention);
         subject = email.subject;
         html = email.html;
@@ -433,8 +468,8 @@ export async function POST(request: NextRequest) {
 
       case "DEVIS_REFUSED": {
         // Vrai devis refusé (après upload du PDF)
-        recipientIds = await getUserIdsByRoles(["agent_parc", "admin", "direction"]);
-        recipientEmails = await getEmailsByRoles(["agent_parc", "admin", "direction"]);
+        recipientIds = await getUserIdsByRoles(["agent_parc", "admin", "direction"], userOrgId);
+        recipientEmails = await getEmailsByRoles(["agent_parc", "admin", "direction"], userOrgId);
         const email = buildDevisRefusedEmail(intervention);
         subject = email.subject;
         html = email.html;
@@ -442,8 +477,8 @@ export async function POST(request: NextRequest) {
       }
 
       case "RDV_PLANNED": {
-        recipientIds = await getUserIdsByRoles(["admin", "direction", "exploitation"]);
-        recipientEmails = await getEmailsByRoles(["admin", "direction", "exploitation"]);
+        recipientIds = await getUserIdsByRoles(["admin", "direction", "exploitation", "agent_parc"], userOrgId);
+        recipientEmails = await getEmailsByRoles(["admin", "direction", "exploitation", "agent_parc"], userOrgId);
         const email = buildRdvPlannedEmail(intervention);
         subject = email.subject;
         html = email.html;
@@ -451,8 +486,8 @@ export async function POST(request: NextRequest) {
       }
 
       case "INTERVENTION_COMPLETED": {
-        recipientIds = await getUserIdsByRoles(["admin", "direction", "exploitation"]);
-        recipientEmails = await getEmailsByRoles(["admin", "direction", "exploitation"]);
+        recipientIds = await getUserIdsByRoles(["admin", "direction", "exploitation", "agent_parc"], userOrgId);
+        recipientEmails = await getEmailsByRoles(["admin", "direction", "exploitation", "agent_parc"], userOrgId);
         const email = buildInterventionCompletedEmail(intervention);
         subject = email.subject;
         html = email.html;
@@ -461,8 +496,8 @@ export async function POST(request: NextRequest) {
 
       case "INSPECTION_WORK_COMPLETED": {
         // 🆕 NOUVEAU: Inspection après travaux validée
-        recipientIds = await getUserIdsByRoles(["admin", "direction", "exploitation", "agent_parc"]);
-        recipientEmails = await getEmailsByRoles(["admin", "direction", "exploitation", "agent_parc"]);
+        recipientIds = await getUserIdsByRoles(["admin", "direction", "exploitation", "agent_parc"], userOrgId);
+        recipientEmails = await getEmailsByRoles(["admin", "direction", "exploitation", "agent_parc"], userOrgId);
         const email = buildInspectionWorkCompletedEmail(intervention, extra);
         subject = email.subject;
         html = email.html;
